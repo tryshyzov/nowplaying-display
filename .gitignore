@@ -9,3 +9,4 @@ android/NowPlaying.apk
 *.keystore
 *.jks
 *.idsig
+release/

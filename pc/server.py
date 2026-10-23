@@ -374,15 +374,19 @@ async def on_cleanup(app):
     await app['http'].close()
 
 
-def main():
+def setup_logging(log_dir=None):
     fmt = '%(asctime)s %(message)s'
-    if sys.stderr is None:  # запуск через pythonw (автозагрузка, без окна) — пишем в файл до 1 МБ
+    if log_dir or sys.stderr is None:  # без консоли (pythonw, exe) — пишем в файл до 1 МБ
         from logging.handlers import RotatingFileHandler
-        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'server.log')
+        path = os.path.join(log_dir or os.path.dirname(os.path.abspath(__file__)), 'server.log')
         logging.basicConfig(level=logging.INFO, format=fmt,
                             handlers=[RotatingFileHandler(path, maxBytes=1_000_000, backupCount=1, encoding='utf-8')])
-    else:
-        logging.basicConfig(level=logging.INFO, format=fmt)
+        return path
+    logging.basicConfig(level=logging.INFO, format=fmt)
+    return None
+
+
+def create_app():
     app = web.Application()
     app.add_routes([
         web.get('/api/now', h_now),
@@ -393,7 +397,12 @@ def main():
     ])
     app.on_startup.append(on_startup)
     app.on_cleanup.append(on_cleanup)
-    web.run_app(app, host='0.0.0.0', port=HTTP_PORT, access_log=None, print=None)
+    return app
+
+
+def main():
+    setup_logging()
+    web.run_app(create_app(), host='0.0.0.0', port=HTTP_PORT, access_log=None, print=None)
 
 
 if __name__ == '__main__':
