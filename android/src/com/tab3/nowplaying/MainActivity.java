@@ -72,6 +72,14 @@ public class MainActivity extends Activity {
     private TextView title, artist, unsynced, timeLeft, timeRight, clock, date, status, flashIcon;
     private View dark;                     // чёрная шторка «экран выключен»
 
+    // фон экрана часов: фото или зацикленное видео из папки на ПК
+    private FrameLayout bgLayer;
+    private ImageView bgImage;
+    private android.widget.VideoView bgVideo;
+    private volatile String bgId;
+    private String bgType;
+    private boolean bgReady, bgPlaying;
+
     // экран и подсветка
     private static final long DARK_AFTER_IDLE_MS = 30 * 60 * 1000;   // 30 минут без музыки — гасим
     private static final long WAKE_ON_TAP_MS = 60 * 1000;
@@ -122,6 +130,7 @@ public class MainActivity extends Activity {
     protected void onPause() {
         super.onPause();
         running = false;
+        syncBgVideo(false);
         ui.removeCallbacks(ticker);
         ui.removeCallbacks(clockTick);
     }
@@ -240,6 +249,20 @@ public class MainActivity extends Activity {
 
         root.addView(player, new FrameLayout.LayoutParams(-1, -1));
 
+        // --- фон для часов (под ними) ---
+        bgLayer = new FrameLayout(this);
+        bgImage = new ImageView(this);
+        bgImage.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        bgLayer.addView(bgImage, new FrameLayout.LayoutParams(-1, -1));
+        bgVideo = new android.widget.VideoView(this);
+        bgVideo.setVisibility(View.GONE);
+        bgLayer.addView(bgVideo, new FrameLayout.LayoutParams(-1, -1, Gravity.CENTER));
+        View bgDim = new View(this);
+        bgDim.setBackgroundColor(0x59000000);   // ~35% затемнение, чтобы часы читались
+        bgLayer.addView(bgDim, new FrameLayout.LayoutParams(-1, -1));
+        bgLayer.setVisibility(View.GONE);
+        root.addView(bgLayer, new FrameLayout.LayoutParams(-1, -1));
+
         // --- часы в простое ---
         idle = new LinearLayout(this);
         idle.setOrientation(LinearLayout.VERTICAL);
@@ -278,6 +301,104 @@ public class MainActivity extends Activity {
     private void showIdle(boolean on) {
         idle.setVisibility(on ? View.VISIBLE : View.GONE);
         player.setVisibility(on ? View.GONE : View.VISIBLE);
+        bgLayer.setVisibility(on && bgReady ? View.VISIBLE : View.GONE);
+    }
+
+    /** Видео фона играет только на экране часов и пока экран не «спит». */
+    private void syncBgVideo(boolean shouldPlay) {
+        if (!"video".equals(bgType) || !bgReady) return;
+        if (shouldPlay && !bgPlaying) { bgVideo.start(); bgPlaying = true; }
+        else if (!shouldPlay && bgPlaying) { bgVideo.pause(); bgPlaying = false; }
+    }
+
+    private void clearBg() {
+        bgReady = false;
+        bgType = null;
+        bgPlaying = false;
+        bgVideo.stopPlayback();
+        bgVideo.setVisibility(View.GONE);
+        bgImage.setImageDrawable(null);
+        bgLayer.setVisibility(View.GONE);
+    }
+
+    private void loadBg(final String srv, final String id, final String ext, final String type) {
+        pool.execute(new Runnable() {
+            public void run() {
+                try {
+                    final java.io.File dir = getCacheDir();
+                    final java.io.File file = new java.io.File(dir, "bg_" + id + "." + ext);
+                    if (!file.exists()) {
+                        java.io.File part = new java.io.File(dir, "bg_" + id + ".part");
+                        HttpURLConnection c = (HttpURLConnection) new URL("http://" + srv + "/bg/" + id + "." + ext).openConnection();
+                        c.setConnectTimeout(5000);
+                        c.setReadTimeout(30000);
+                        InputStream in = c.getInputStream();
+                        java.io.FileOutputStream out = new java.io.FileOutputStream(part);
+                        byte[] buf = new byte[65536];
+                        int n;
+                        while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+                        out.close();
+                        in.close();
+                        c.disconnect();
+                        if (!part.renameTo(file)) throw new java.io.IOException("rename");
+                    }
+                    for (java.io.File f : dir.listFiles()) {   // старые фоны больше не нужны
+                        if (f.getName().startsWith("bg_") && !f.equals(file)) f.delete();
+                    }
+                    final Bitmap bmp = "image".equals(type) ? decodeForScreen(file) : null;
+                    ui.post(new Runnable() {
+                        public void run() {
+                            if (id.equals(bgId)) showBg(type, file, bmp);
+                        }
+                    });
+                } catch (Exception e) {
+                    android.util.Log.w("NowPlaying", "background: " + e);
+                    bgId = null;  // попробуем снова при следующем опросе
+                }
+            }
+        });
+    }
+
+    private Bitmap decodeForScreen(java.io.File f) {
+        BitmapFactory.Options o = new BitmapFactory.Options();
+        o.inJustDecodeBounds = true;
+        BitmapFactory.decodeFile(f.getPath(), o);
+        int sample = 1;
+        while (o.outWidth / (sample * 2) >= 1024 && o.outHeight / (sample * 2) >= 600) sample *= 2;
+        o = new BitmapFactory.Options();
+        o.inSampleSize = sample;
+        return BitmapFactory.decodeFile(f.getPath(), o);
+    }
+
+    private void showBg(String type, java.io.File file, Bitmap bmp) {
+        bgVideo.stopPlayback();
+        bgPlaying = false;
+        bgType = type;
+        if ("image".equals(type)) {
+            bgVideo.setVisibility(View.GONE);
+            bgImage.setImageBitmap(bmp);
+            bgReady = bmp != null;
+        } else {
+            bgImage.setImageDrawable(null);
+            bgVideo.setVisibility(View.VISIBLE);
+            bgVideo.setOnPreparedListener(new android.media.MediaPlayer.OnPreparedListener() {
+                public void onPrepared(android.media.MediaPlayer mp) {
+                    mp.setLooping(true);
+                    mp.setVolume(0f, 0f);
+                    // на весь экран с обрезкой краёв (как centerCrop у картинки)
+                    int vw = mp.getVideoWidth(), vh = mp.getVideoHeight();
+                    int w = root.getWidth(), h = root.getHeight();
+                    if (vw > 0 && vh > 0 && w > 0 && h > 0) {
+                        float k = Math.max((float) w / vw, (float) h / vh);
+                        bgVideo.setLayoutParams(new FrameLayout.LayoutParams((int) (vw * k), (int) (vh * k), Gravity.CENTER));
+                    }
+                    if (!bgPlaying) mp.pause();
+                }
+            });
+            bgVideo.setVideoPath(file.getPath());
+            bgReady = true;
+        }
+        bgLayer.setVisibility(idle.getVisibility() == View.VISIBLE && bgReady ? View.VISIBLE : View.GONE);
     }
 
     private static int darker(int c) {
@@ -355,9 +476,10 @@ public class MainActivity extends Activity {
         boolean night = isNight();
         boolean darkNow = idleNow && t - idleSince > DARK_AFTER_IDLE_MS && t > wakeUntil;
         dark.setVisibility(darkNow ? View.VISIBLE : View.GONE);
+        syncBgVideo(idleNow && !darkNow);
         float b;
         if (darkNow) b = 0.0f;
-        else if (idleNow) b = night ? 0.02f : 0.15f;
+        else if (idleNow) b = night ? 0.02f : (bgReady ? 0.35f : 0.15f);  // с фоном днём ярче, иначе его не видно
         else b = night ? 0.10f : -1f;    // -1 — яркость, выбранная в настройках
         if (b != appliedBrightness) {
             WindowManager.LayoutParams lp = getWindow().getAttributes();
@@ -563,6 +685,13 @@ public class MainActivity extends Activity {
 
     private void apply(JSONObject j) {
         connected = true;
+        JSONObject bg = j.optJSONObject("bg");
+        String nbg = bg == null ? null : bg.optString("id", null);
+        if (nbg == null ? bgId != null : !nbg.equals(bgId)) {
+            bgId = nbg;
+            if (nbg == null) clearBg();
+            else loadBg(server, nbg, bg.optString("ext", "jpg"), bg.optString("type", "image"));
+        }
         String id = j.isNull("track_id") ? null : j.optString("track_id", null);
         boolean wasPlaying = playing;
         playing = j.optBoolean("playing");

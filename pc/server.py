@@ -31,6 +31,8 @@ from winrt.windows.media.control import (
 )
 from winrt.windows.storage.streams import Buffer, InputStreamOptions
 
+import background
+
 HTTP_PORT = int(os.environ.get('NP_HTTP_PORT', '47801'))
 UDP_PORT = int(os.environ.get('NP_UDP_PORT', '47800'))
 POLL = 0.5           # секунд между опросами панели Windows
@@ -320,6 +322,7 @@ async def h_now(request):
     s['server_time_ms'] = int(now_ms())
     s['has_art'] = s['track_id'] in art
     s['lyrics_ready'] = s['track_id'] in lyrics
+    s['bg'] = BG.info()
     return jsonr(s)
 
 
@@ -364,17 +367,29 @@ class Discovery(asyncio.DatagramProtocol):
             self.transport.sendto(reply, addr)
 
 
+BG = background.Background()
+
+
+async def h_bg(request):
+    c = BG.current
+    if not c or c['id'] != request.match_info['id'] or c['ext'] != request.match_info['ext']:
+        raise web.HTTPNotFound()
+    return web.FileResponse(c['path'], headers={'Cache-Control': 'max-age=86400'})
+
+
 async def on_startup(app):
     ctx = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     app['http'] = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15), headers={'User-Agent': UA},
                                         connector=aiohttp.TCPConnector(ssl=ctx))
     app['poll'] = asyncio.create_task(poll_loop(app))
+    app['bg'] = asyncio.create_task(BG.watch())
     loop = asyncio.get_running_loop()
     app['udp'], _ = await loop.create_datagram_endpoint(Discovery, local_addr=('0.0.0.0', UDP_PORT))
 
 
 async def on_cleanup(app):
     app['poll'].cancel()
+    app['bg'].cancel()
     app['udp'].close()
     await app['http'].close()
 
@@ -398,6 +413,7 @@ def create_app():
         web.get(r'/art/{id:[0-9a-f]{12}}.jpg', h_art),
         web.get(r'/api/lyrics/{id:[0-9a-f]{12}}', h_lyrics),
         web.get(r'/api/control/{action:toggle|next|prev}', h_control),
+        web.get(r'/bg/{id:[0-9a-f]{12}}.{ext:jpg|mp4}', h_bg),
         web.get('/health', lambda r: web.Response(text='ok')),
     ])
     app.on_startup.append(on_startup)

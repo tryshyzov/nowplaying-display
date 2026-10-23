@@ -186,6 +186,9 @@ def main():
         if log_path and os.path.exists(log_path):
             os.startfile(log_path)
 
+    def open_bg_folder(icon, item):
+        os.startfile(server.BG.src_dir)
+
     def quit_app(icon, item):
         srv.stop()
         icon.stop()
@@ -196,6 +199,7 @@ def main():
         pystray.Menu.SEPARATOR,
         pystray.MenuItem('Запускать вместе с Windows', toggle_autostart, checked=lambda item: autostart_enabled()),
         pystray.MenuItem('Разрешить в брандмауэре…', fix_firewall, visible=lambda item: not fw['ok']),
+        pystray.MenuItem('Папка фона для часов…', open_bg_folder),
         pystray.MenuItem('Открыть журнал', open_log),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem('Выход', quit_app),
