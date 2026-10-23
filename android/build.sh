@@ -12,11 +12,12 @@ KS="${KEYSTORE:-$SDK/nowplaying.keystore}"
 
 rm -rf "$B"; mkdir -p "$B/gen" "$B/classes" "$B/dex"
 cp -r "$SRC/res" "$SRC/src" "$SRC/AndroidManifest.xml" "$B/"
+if [ -d "$SRC/assets" ]; then cp -r "$SRC/assets" "$B/"; fi
 cd "$B"
 
 "$BT/aapt2.exe" compile --dir res -o res.zip
 "$BT/aapt2.exe" link -I "$JAR" --manifest AndroidManifest.xml --java gen \
-    --min-sdk-version 16 --target-sdk-version 17 -o base.apk res.zip
+    --min-sdk-version 16 --target-sdk-version 17 $( [ -d assets ] && echo "-A assets" ) -o base.apk res.zip
 
 javac -encoding UTF-8 -source 8 -target 8 -nowarn -Xlint:-options -bootclasspath "$JAR" -d classes \
     $(find src gen -name '*.java')

@@ -58,6 +58,7 @@ public class MainActivity extends Activity {
     private static final long IDLE_AFTER_PAUSE_MS = 60000;
 
     private final Handler ui = new Handler();
+    private final java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newCachedThreadPool();
     private SharedPreferences prefs;
     private volatile String server;        // "ip:port" или null
     private volatile boolean running;
@@ -82,6 +83,7 @@ public class MainActivity extends Activity {
     // последнее состояние с ПК
     private String trackId;
     private int artRev = -1;
+    private long shownSecond = -2, shownDuration = -1;
     private boolean playing;
     private long position, duration, receivedAt, pausedSince;
     private boolean connected;
@@ -100,6 +102,7 @@ public class MainActivity extends Activity {
                 | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
         prefs = getSharedPreferences("np", MODE_PRIVATE);
         server = prefs.getString("server", null);
+        installCrashRestart();
         buildUi();
         setContentView(root);
     }
@@ -129,11 +132,24 @@ public class MainActivity extends Activity {
         return (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, getResources().getDisplayMetrics());
     }
 
+    private Typeface fontMedium, fontSemiBold, fontExtraBold;
+
+    /** Manrope из assets; если файла нет — системный шрифт. */
+    private Typeface font(String name, Typeface fallback) {
+        try { return Typeface.createFromAsset(getAssets(), "fonts/Manrope-" + name + ".ttf"); }
+        catch (Exception e) { return fallback; }
+    }
+
     private TextView text(float sp, boolean bold, int alpha) {
+        if (fontMedium == null) {
+            fontMedium = font("Medium", Typeface.DEFAULT);
+            fontSemiBold = font("SemiBold", Typeface.DEFAULT_BOLD);
+            fontExtraBold = font("ExtraBold", Typeface.DEFAULT_BOLD);
+        }
         TextView t = new TextView(this);
         t.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp);
         t.setTextColor(Color.argb(alpha, 255, 255, 255));
-        t.setTypeface(Typeface.create(bold ? "sans-serif" : "sans-serif-light", bold ? Typeface.BOLD : Typeface.NORMAL));
+        t.setTypeface(bold ? fontExtraBold : fontMedium);
         t.setShadowLayer(dp(3), 0, dp(1), 0x66000000);
         return t;
     }
@@ -200,6 +216,7 @@ public class MainActivity extends Activity {
         right.addView(unsynced);
 
         lyrics = new LyricsView(this);
+        lyrics.setTypeface(fontSemiBold);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1);
         lp.topMargin = dp(18);
         lp.bottomMargin = dp(12);
@@ -236,6 +253,7 @@ public class MainActivity extends Activity {
         root.addView(status, sp);
 
         flashIcon = text(90, true, 230);
+        flashIcon.setTypeface(Typeface.DEFAULT_BOLD); // значков ▶ ❚❚ в Manrope нет
         flashIcon.setAlpha(0f);
         root.addView(flashIcon, new FrameLayout.LayoutParams(-2, -2, Gravity.CENTER));
 
@@ -276,12 +294,45 @@ public class MainActivity extends Activity {
 
     private void setCover(Bitmap bmp) {
         Drawable from = cover.getDrawable();
+        // берём только последнюю картинку, иначе переходы вкладываются друг в друга и копят память
+        if (from instanceof TransitionDrawable) from = ((TransitionDrawable) from).getDrawable(1);
         Drawable to = bmp != null ? new BitmapDrawable(getResources(), bmp) : new ColorDrawable(0x33ffffff);
         if (from == null) from = new ColorDrawable(0);
         TransitionDrawable t = new TransitionDrawable(new Drawable[]{from, to});
         t.setCrossFadeEnabled(true);
         cover.setImageDrawable(t);
         t.startTransition(500);
+    }
+
+    /** При падении перезапускаемся через 3 с (экран у колонки должен жить сам),
+     *  но не чаще трёх раз за 5 минут — чтобы не было бесконечного цикла. */
+    private void installCrashRestart() {
+        final Thread.UncaughtExceptionHandler system = Thread.getDefaultUncaughtExceptionHandler();
+        Thread.setDefaultUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
+            public void uncaughtException(Thread th, Throwable ex) {
+                try {
+                    long now = System.currentTimeMillis();
+                    String[] old = prefs.getString("crashes", "").split(",");
+                    StringBuilder recent = new StringBuilder();
+                    int count = 0;
+                    for (String c : old) {
+                        try {
+                            if (now - Long.parseLong(c) < 5 * 60 * 1000) { recent.append(c).append(','); count++; }
+                        } catch (NumberFormatException ignored) { }
+                    }
+                    prefs.edit().putString("crashes", recent.append(now).toString()).commit();
+                    if (count < 3) {
+                        android.app.PendingIntent pi = android.app.PendingIntent.getActivity(MainActivity.this, 0,
+                                new android.content.Intent(MainActivity.this, MainActivity.class)
+                                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK), 0);
+                        ((android.app.AlarmManager) getSystemService(ALARM_SERVICE))
+                                .set(android.app.AlarmManager.RTC, now + 3000, pi);
+                    }
+                } catch (Throwable ignored) { }
+                if (system != null) system.uncaughtException(th, ex);
+                else System.exit(2);
+            }
+        });
     }
 
     private static boolean isNight() {
@@ -325,11 +376,11 @@ public class MainActivity extends Activity {
     private void control(final String action) {
         final String s = server;
         if (s == null) return;
-        new Thread(new Runnable() {
+        pool.execute(new Runnable() {
             public void run() {
                 try { get("http://" + s + "/api/control/" + action, 3000); } catch (Exception ignored) { }
             }
-        }, "np-control").start();
+        });
     }
 
     private static String fmt(long ms) {
@@ -347,8 +398,13 @@ public class MainActivity extends Activity {
             if (trackId != null) {
                 long p = livePosition();
                 progress.setFraction(duration > 0 ? (float) p / duration : 0);
-                timeLeft.setText(duration > 0 ? fmt(p) : "");
-                timeRight.setText(duration > 0 ? fmt(duration) : "");
+                long sec = duration > 0 ? p / 1000 : -1;
+                if (sec != shownSecond || duration != shownDuration) {
+                    shownSecond = sec;
+                    shownDuration = duration;
+                    timeLeft.setText(duration > 0 ? fmt(p) : "");
+                    timeRight.setText(duration > 0 ? fmt(duration) : "");
+                }
                 lyrics.setPosition(p, duration);
             }
             long t = SystemClock.elapsedRealtime();
@@ -525,7 +581,7 @@ public class MainActivity extends Activity {
     }
 
     private void loadCover(final String srv, final String id) {
-        new Thread(new Runnable() {
+        pool.execute(new Runnable() {
             public void run() {
                 try {
                     byte[] img = get("http://" + srv + "/art/" + id + ".jpg?r=" + artRev, 3000);
@@ -535,11 +591,11 @@ public class MainActivity extends Activity {
                     artRev = -1;  // попробуем ещё раз при следующем опросе
                 }
             }
-        }, "np-cover").start();
+        });
     }
 
     private void loadTrackExtras(final String srv, final String id) {
-        new Thread(new Runnable() {
+        pool.execute(new Runnable() {
             public void run() {
                 // текст песни
                 for (int i = 0; i < 5 && id.equals(trackId); i++) {
@@ -575,7 +631,7 @@ public class MainActivity extends Activity {
                     }
                 }
             }
-        }, "np-extras").start();
+        });
     }
 
     /** Тонкая полоска прогресса. */
