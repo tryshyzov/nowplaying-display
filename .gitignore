@@ -1,0 +1,11 @@
+# Python
+pc/.venv/
+__pycache__/
+*.pyc
+pc/server.log*
+
+# Android: результат сборки и ключи подписи
+android/NowPlaying.apk
+*.keystore
+*.jks
+*.idsig

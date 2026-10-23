@@ -1,0 +1,603 @@
+package com.tab3.nowplaying;
+
+import android.animation.ArgbEvaluator;
+import android.animation.ValueAnimator;
+import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.DialogInterface;
+import android.content.SharedPreferences;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.Paint;
+import android.graphics.Typeface;
+import android.graphics.drawable.BitmapDrawable;
+import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.Drawable;
+import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.TransitionDrawable;
+import android.net.DhcpInfo;
+import android.net.wifi.WifiManager;
+import android.os.Bundle;
+import android.os.Handler;
+import android.os.SystemClock;
+import android.text.InputType;
+import android.text.TextUtils;
+import android.util.TypedValue;
+import android.view.GestureDetector;
+import android.view.Gravity;
+import android.view.MotionEvent;
+import android.view.View;
+import android.view.WindowManager;
+import android.widget.EditText;
+import android.widget.FrameLayout;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.TextView;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.net.DatagramPacket;
+import java.net.DatagramSocket;
+import java.net.HttpURLConnection;
+import java.net.InetAddress;
+import java.net.URL;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+import java.util.Locale;
+import java.util.Random;
+
+public class MainActivity extends Activity {
+    private static final int UDP_PORT = 47800;
+    private static final long IDLE_AFTER_PAUSE_MS = 60000;
+
+    private final Handler ui = new Handler();
+    private SharedPreferences prefs;
+    private volatile String server;        // "ip:port" или null
+    private volatile boolean running;
+    private volatile int generation;
+
+    private FrameLayout root;
+    private GradientDrawable background;
+    private int bgColor = 0xff202020;
+    private LinearLayout player, idle;
+    private ImageView cover;
+    private TextView title, artist, unsynced, timeLeft, timeRight, clock, date, status, flashIcon;
+    private View dark;                     // чёрная шторка «экран выключен»
+
+    // экран и подсветка
+    private static final long DARK_AFTER_IDLE_MS = 30 * 60 * 1000;   // 30 минут без музыки — гасим
+    private static final long WAKE_ON_TAP_MS = 60 * 1000;
+    private long idleSince, wakeUntil;
+    private float appliedBrightness = -2;
+    private ProgressLine progress;
+    private LyricsView lyrics;
+
+    // последнее состояние с ПК
+    private String trackId;
+    private int artRev = -1;
+    private boolean playing;
+    private long position, duration, receivedAt, pausedSince;
+    private boolean connected;
+
+    private final Random random = new Random();
+    private final SimpleDateFormat clockFmt = new SimpleDateFormat("HH:mm", Locale.getDefault());
+    private final SimpleDateFormat dateFmt = new SimpleDateFormat("EEEE, d MMMM", new Locale("ru"));
+
+    @Override
+    protected void onCreate(Bundle b) {
+        super.onCreate(b);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+                | WindowManager.LayoutParams.FLAG_FULLSCREEN
+                | WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED   // поверх экрана блокировки (без пароля)
+                | WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
+                | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
+        prefs = getSharedPreferences("np", MODE_PRIVATE);
+        server = prefs.getString("server", null);
+        buildUi();
+        setContentView(root);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        root.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LOW_PROFILE);
+        running = true;
+        final int gen = ++generation;
+        new Thread(new Runnable() { public void run() { networkLoop(gen); } }, "np-net").start();
+        ui.post(ticker);
+        ui.post(clockTick);
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        running = false;
+        ui.removeCallbacks(ticker);
+        ui.removeCallbacks(clockTick);
+    }
+
+    // ---------------- интерфейс ----------------
+
+    private int dp(float v) {
+        return (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, getResources().getDisplayMetrics());
+    }
+
+    private TextView text(float sp, boolean bold, int alpha) {
+        TextView t = new TextView(this);
+        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp);
+        t.setTextColor(Color.argb(alpha, 255, 255, 255));
+        t.setTypeface(Typeface.create(bold ? "sans-serif" : "sans-serif-light", bold ? Typeface.BOLD : Typeface.NORMAL));
+        t.setShadowLayer(dp(3), 0, dp(1), 0x66000000);
+        return t;
+    }
+
+    private void buildUi() {
+        root = new FrameLayout(this);
+        background = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{bgColor, darker(bgColor)});
+        root.setBackgroundDrawable(background);
+        // жесты: тап — пауза/продолжить, свайп — следующий/предыдущий, долгое нажатие — адрес ПК
+        final GestureDetector gestures = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
+            @Override public boolean onDown(MotionEvent e) { return true; }
+            @Override public boolean onSingleTapUp(MotionEvent e) {
+                if (wakeFromDark()) return true;
+                if (player.getVisibility() == View.VISIBLE) {
+                    control("toggle");
+                    flash(playing ? "❚❚" : "▶");
+                }
+                return true;
+            }
+            @Override public boolean onFling(MotionEvent a, MotionEvent b, float vx, float vy) {
+                if (wakeFromDark() || player.getVisibility() != View.VISIBLE) return true;
+                float dx = b.getX() - a.getX();
+                if (Math.abs(dx) > dp(100) && Math.abs(vx) > Math.abs(vy)) {
+                    control(dx < 0 ? "next" : "prev");
+                    flash(dx < 0 ? "⏭" : "⏮");
+                }
+                return true;
+            }
+            @Override public void onLongPress(MotionEvent e) { askServer(); }
+        });
+        root.setOnTouchListener(new View.OnTouchListener() {
+            public boolean onTouch(View v, MotionEvent e) { return gestures.onTouchEvent(e); }
+        });
+
+        // --- экран трека ---
+        player = new LinearLayout(this);
+        player.setOrientation(LinearLayout.HORIZONTAL);
+        player.setGravity(Gravity.CENTER_VERTICAL);
+        player.setPadding(dp(36), dp(36), dp(36), dp(36));
+
+        cover = new ImageView(this);
+        cover.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        cover.setImageDrawable(new ColorDrawable(0x33ffffff));
+        player.addView(cover, new LinearLayout.LayoutParams(dp(400), dp(400)));
+
+        LinearLayout right = new LinearLayout(this);
+        right.setOrientation(LinearLayout.VERTICAL);
+        right.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1);
+        rp.leftMargin = dp(36);
+        player.addView(right, rp);
+
+        title = text(30, true, 255);
+        title.setMaxLines(2);
+        title.setEllipsize(TextUtils.TruncateAt.END);
+        right.addView(title);
+        artist = text(22, false, 200);
+        artist.setSingleLine(true);
+        artist.setEllipsize(TextUtils.TruncateAt.END);
+        right.addView(artist);
+        unsynced = text(13, false, 130);
+        unsynced.setText("текст без синхронизации");
+        unsynced.setVisibility(View.GONE);
+        right.addView(unsynced);
+
+        lyrics = new LyricsView(this);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1);
+        lp.topMargin = dp(18);
+        lp.bottomMargin = dp(12);
+        right.addView(lyrics, lp);
+        lyrics.setVisibility(View.GONE);
+
+        progress = new ProgressLine(this);
+        LinearLayout.LayoutParams pp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(4));
+        pp.topMargin = dp(14);
+        right.addView(progress, pp);
+        LinearLayout times = new LinearLayout(this);
+        timeLeft = text(14, false, 170);
+        timeRight = text(14, false, 170);
+        timeRight.setGravity(Gravity.RIGHT);
+        times.addView(timeLeft, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        times.addView(timeRight, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        right.addView(times);
+
+        root.addView(player, new FrameLayout.LayoutParams(-1, -1));
+
+        // --- часы в простое ---
+        idle = new LinearLayout(this);
+        idle.setOrientation(LinearLayout.VERTICAL);
+        idle.setGravity(Gravity.CENTER);
+        clock = text(130, false, 255);
+        date = text(26, false, 190);
+        idle.addView(clock);
+        idle.addView(date);
+        root.addView(idle, new FrameLayout.LayoutParams(-2, -2, Gravity.CENTER));
+
+        status = text(14, false, 150);
+        FrameLayout.LayoutParams sp = new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+        sp.bottomMargin = dp(10);
+        root.addView(status, sp);
+
+        flashIcon = text(90, true, 230);
+        flashIcon.setAlpha(0f);
+        root.addView(flashIcon, new FrameLayout.LayoutParams(-2, -2, Gravity.CENTER));
+
+        dark = new View(this);
+        dark.setBackgroundColor(0xff000000);
+        dark.setVisibility(View.GONE);
+        root.addView(dark, new FrameLayout.LayoutParams(-1, -1));
+
+        showIdle(true);
+        status.setText("Ищу компьютер…  (долгое нажатие — ввести адрес вручную)");
+    }
+
+    private void showIdle(boolean on) {
+        idle.setVisibility(on ? View.VISIBLE : View.GONE);
+        player.setVisibility(on ? View.GONE : View.VISIBLE);
+    }
+
+    private static int darker(int c) {
+        float[] hsv = new float[3];
+        Color.colorToHSV(c, hsv);
+        hsv[2] *= 0.45f;
+        return Color.HSVToColor(hsv);
+    }
+
+    private void animateBackground(int to) {
+        if (to == bgColor) return;
+        ValueAnimator a = ValueAnimator.ofObject(new ArgbEvaluator(), bgColor, to);
+        a.setDuration(1200);
+        a.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+            public void onAnimationUpdate(ValueAnimator va) {
+                int c = (Integer) va.getAnimatedValue();
+                background.setColors(new int[]{c, darker(c)});
+            }
+        });
+        a.start();
+        bgColor = to;
+    }
+
+    private void setCover(Bitmap bmp) {
+        Drawable from = cover.getDrawable();
+        Drawable to = bmp != null ? new BitmapDrawable(getResources(), bmp) : new ColorDrawable(0x33ffffff);
+        if (from == null) from = new ColorDrawable(0);
+        TransitionDrawable t = new TransitionDrawable(new Drawable[]{from, to});
+        t.setCrossFadeEnabled(true);
+        cover.setImageDrawable(t);
+        t.startTransition(500);
+    }
+
+    private static boolean isNight() {
+        int h = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY);
+        return h >= 23 || h < 8;
+    }
+
+    /** Подсветка: днём с музыкой — как в системе; часы — тускло; ночью — ещё тусклее;
+     *  30 минут без музыки — чёрный экран с минимальной подсветкой (тап будит на минуту). */
+    private void updateScreen(boolean idleNow, long t) {
+        boolean night = isNight();
+        boolean darkNow = idleNow && t - idleSince > DARK_AFTER_IDLE_MS && t > wakeUntil;
+        dark.setVisibility(darkNow ? View.VISIBLE : View.GONE);
+        float b;
+        if (darkNow) b = 0.0f;
+        else if (idleNow) b = night ? 0.02f : 0.15f;
+        else b = night ? 0.10f : -1f;    // -1 — яркость, выбранная в настройках
+        if (b != appliedBrightness) {
+            WindowManager.LayoutParams lp = getWindow().getAttributes();
+            lp.screenBrightness = b;
+            getWindow().setAttributes(lp);
+            appliedBrightness = b;
+        }
+    }
+
+    /** Если экран «спит» — будим его на минуту и не считаем касание командой. */
+    private boolean wakeFromDark() {
+        if (dark.getVisibility() != View.VISIBLE) return false;
+        wakeUntil = SystemClock.elapsedRealtime() + WAKE_ON_TAP_MS;
+        idleSince = SystemClock.elapsedRealtime() - DARK_AFTER_IDLE_MS + WAKE_ON_TAP_MS;
+        return true;
+    }
+
+    private void flash(String symbol) {
+        flashIcon.setText(symbol);
+        flashIcon.animate().cancel();
+        flashIcon.setAlpha(1f);
+        flashIcon.animate().alpha(0f).setStartDelay(350).setDuration(500).start();
+    }
+
+    private void control(final String action) {
+        final String s = server;
+        if (s == null) return;
+        new Thread(new Runnable() {
+            public void run() {
+                try { get("http://" + s + "/api/control/" + action, 3000); } catch (Exception ignored) { }
+            }
+        }, "np-control").start();
+    }
+
+    private static String fmt(long ms) {
+        long s = Math.max(0, ms / 1000);
+        return String.format(Locale.US, "%d:%02d", s / 60, s % 60);
+    }
+
+    private long livePosition() {
+        long p = position + (playing ? SystemClock.elapsedRealtime() - receivedAt : 0);
+        return duration > 0 ? Math.min(p, duration) : p;
+    }
+
+    private final Runnable ticker = new Runnable() {
+        public void run() {
+            if (trackId != null) {
+                long p = livePosition();
+                progress.setFraction(duration > 0 ? (float) p / duration : 0);
+                timeLeft.setText(duration > 0 ? fmt(p) : "");
+                timeRight.setText(duration > 0 ? fmt(duration) : "");
+                lyrics.setPosition(p, duration);
+            }
+            long t = SystemClock.elapsedRealtime();
+            boolean idleNow = !connected || trackId == null
+                    || (!playing && t - pausedSince > IDLE_AFTER_PAUSE_MS);
+            if (idleNow != (idle.getVisibility() == View.VISIBLE)) showIdle(idleNow);
+            if (!idleNow || idleSince == 0) idleSince = t;
+            updateScreen(idleNow, t);
+            ui.postDelayed(this, 100);
+        }
+    };
+
+    private final Runnable clockTick = new Runnable() {
+        public void run() {
+            Date now = new Date();
+            clock.setText(clockFmt.format(now));
+            String d = dateFmt.format(now);
+            date.setText(d.substring(0, 1).toUpperCase(new Locale("ru")) + d.substring(1));
+            if (now.getSeconds() == 0) { // каждую минуту чуть сдвигаем часы, чтобы не выжигать экран
+                idle.setTranslationX(random.nextInt(dp(60)) - dp(30));
+                idle.setTranslationY(random.nextInt(dp(40)) - dp(20));
+            }
+            ui.postDelayed(this, 1000 - System.currentTimeMillis() % 1000);
+        }
+    };
+
+    private void askServer() {
+        final EditText e = new EditText(this);
+        e.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
+        e.setHint("192.168.1.10:47801");
+        if (server != null) e.setText(server);
+        new AlertDialog.Builder(this)
+                .setTitle("Адрес компьютера")
+                .setMessage("Оставьте пустым для автопоиска")
+                .setView(e)
+                .setPositiveButton("OK", new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface d, int w) {
+                        String s = e.getText().toString().trim();
+                        if (s.length() > 0 && !s.contains(":")) s += ":47801";
+                        server = s.length() > 0 ? s : null;
+                        prefs.edit().putString("server", server).commit();
+                    }
+                })
+                .setNegativeButton("Отмена", null)
+                .show();
+    }
+
+    // ---------------- сеть ----------------
+
+    private void networkLoop(int gen) {
+        int failures = 0;
+        while (running && gen == generation) {
+            String s = server;
+            if (s == null) {
+                setStatus("Ищу компьютер…  (долгое нажатие — ввести адрес вручную)");
+                s = discover();
+                if (s == null) { sleep(3000); continue; }
+                server = s;
+                prefs.edit().putString("server", s).commit();
+            }
+            try {
+                final JSONObject now = new JSONObject(new String(get("http://" + s + "/api/now", 3000), "UTF-8"));
+                failures = 0;
+                ui.post(new Runnable() { public void run() { apply(now); } });
+                setStatus("");
+            } catch (Exception e) {
+                failures++;
+                setStatus("Нет связи с компьютером " + s);
+                if (failures >= 5) {
+                    connected = false;
+                    if (failures % 5 == 0) {          // попробуем найти ПК заново (мог смениться IP)
+                        String found = discover();
+                        if (found != null) server = found;
+                    }
+                }
+            }
+            sleep(1000);
+        }
+    }
+
+    private void setStatus(final String text) {
+        ui.post(new Runnable() { public void run() { status.setText(text); } });
+    }
+
+    private static void sleep(long ms) {
+        try { Thread.sleep(ms); } catch (InterruptedException ignored) { }
+    }
+
+    private static byte[] get(String url, int timeout) throws Exception {
+        HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
+        c.setConnectTimeout(timeout);
+        c.setReadTimeout(timeout * 4);
+        try {
+            if (c.getResponseCode() != 200) throw new Exception("HTTP " + c.getResponseCode());
+            InputStream in = c.getInputStream();
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            byte[] buf = new byte[16384];
+            int n;
+            while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+            return out.toByteArray();
+        } finally {
+            c.disconnect();
+        }
+    }
+
+    /** UDP-широковещательный поиск ПК в сети. */
+    private String discover() {
+        DatagramSocket sock = null;
+        try {
+            sock = new DatagramSocket();
+            sock.setBroadcast(true);
+            sock.setSoTimeout(1500);
+            byte[] msg = "NOWPLAYING_DISCOVER".getBytes("UTF-8");
+            List<InetAddress> targets = new ArrayList<InetAddress>();
+            targets.add(InetAddress.getByName("255.255.255.255"));
+            WifiManager wm = (WifiManager) getSystemService(WIFI_SERVICE);
+            DhcpInfo dhcp = wm != null ? wm.getDhcpInfo() : null;
+            if (dhcp != null && dhcp.ipAddress != 0) {
+                int bc = (dhcp.ipAddress & dhcp.netmask) | ~dhcp.netmask;
+                byte[] q = new byte[4];
+                for (int k = 0; k < 4; k++) q[k] = (byte) ((bc >> (k * 8)) & 0xff);
+                targets.add(InetAddress.getByAddress(q));
+            }
+            for (InetAddress a : targets) sock.send(new DatagramPacket(msg, msg.length, a, UDP_PORT));
+            byte[] buf = new byte[256];
+            DatagramPacket p = new DatagramPacket(buf, buf.length);
+            sock.receive(p);
+            String[] parts = new String(p.getData(), 0, p.getLength(), "UTF-8").trim().split(" ");
+            if (parts.length >= 2 && parts[0].equals("NOWPLAYING_HERE")) {
+                return p.getAddress().getHostAddress() + ":" + parts[1];
+            }
+        } catch (Exception ignored) {
+        } finally {
+            if (sock != null) sock.close();
+        }
+        return null;
+    }
+
+    private void apply(JSONObject j) {
+        connected = true;
+        String id = j.isNull("track_id") ? null : j.optString("track_id", null);
+        boolean wasPlaying = playing;
+        playing = j.optBoolean("playing");
+        position = j.optLong("position_ms");
+        duration = j.optLong("duration_ms");
+        receivedAt = SystemClock.elapsedRealtime();
+        if (!playing && (wasPlaying || pausedSince == 0)) pausedSince = receivedAt;
+        if (playing) pausedSince = receivedAt;
+
+        if (id != null && !id.equals(trackId)) {
+            trackId = id;
+            title.setText(j.optString("title"));
+            String a = j.optString("artist");
+            artist.setText(a);
+            artist.setVisibility(a.length() > 0 ? View.VISIBLE : View.GONE);
+            try { animateBackground(Color.parseColor(j.optString("color", "#202020"))); } catch (Exception ignored) { }
+            lyrics.setLyrics(null, new ArrayList<String>(), false);
+            lyrics.setVisibility(View.GONE);
+            unsynced.setVisibility(View.GONE);
+            loadTrackExtras(server, id);
+            setCover(null);
+            artRev = -1;
+        } else if (id == null) {
+            trackId = null;
+        } else {
+            // цвет приходит чуть позже обложки — обновим, если поменялся
+            try { animateBackground(Color.parseColor(j.optString("color", "#202020"))); } catch (Exception ignored) { }
+        }
+        int rev = j.optInt("art_rev", 0);
+        if (id != null && j.optBoolean("has_art") && rev != artRev) {
+            artRev = rev;
+            loadCover(server, id);  // сначала маленькая обложка из Windows, потом чёткая из iTunes
+        }
+    }
+
+    private void loadCover(final String srv, final String id) {
+        new Thread(new Runnable() {
+            public void run() {
+                try {
+                    byte[] img = get("http://" + srv + "/art/" + id + ".jpg?r=" + artRev, 3000);
+                    final Bitmap bmp = BitmapFactory.decodeByteArray(img, 0, img.length);
+                    ui.post(new Runnable() { public void run() { if (id.equals(trackId) && bmp != null) setCover(bmp); } });
+                } catch (Exception ignored) {
+                    artRev = -1;  // попробуем ещё раз при следующем опросе
+                }
+            }
+        }, "np-cover").start();
+    }
+
+    private void loadTrackExtras(final String srv, final String id) {
+        new Thread(new Runnable() {
+            public void run() {
+                // текст песни
+                for (int i = 0; i < 5 && id.equals(trackId); i++) {
+                    try {
+                        JSONObject l = new JSONObject(new String(get("http://" + srv + "/api/lyrics/" + id, 15000), "UTF-8"));
+                        if (l.optBoolean("pending")) { sleep(2000); continue; }
+                        final List<Long> t = new ArrayList<Long>();
+                        final List<String> lines = new ArrayList<String>();
+                        JSONArray synced = l.optJSONArray("synced");
+                        boolean isSynced = synced != null && synced.length() > 0;
+                        if (isSynced) {
+                            for (int k = 0; k < synced.length(); k++) {
+                                JSONObject o = synced.getJSONObject(k);
+                                t.add(o.getLong("t"));
+                                lines.add(o.optString("text"));
+                            }
+                        } else {
+                            for (String s : l.optString("plain").split("\n")) lines.add(s.trim());
+                            if (lines.size() == 1 && lines.get(0).length() == 0) lines.clear();
+                        }
+                        final boolean fs = isSynced;
+                        ui.post(new Runnable() {
+                            public void run() {
+                                if (!id.equals(trackId)) return;
+                                lyrics.setLyrics(fs ? t : null, lines, fs);
+                                lyrics.setVisibility(lines.isEmpty() ? View.GONE : View.VISIBLE);
+                                unsynced.setVisibility(!fs && !lines.isEmpty() ? View.VISIBLE : View.GONE);
+                            }
+                        });
+                        break;
+                    } catch (Exception e) {
+                        sleep(2000);
+                    }
+                }
+            }
+        }, "np-extras").start();
+    }
+
+    /** Тонкая полоска прогресса. */
+    static class ProgressLine extends View {
+        private final Paint back = new Paint(Paint.ANTI_ALIAS_FLAG), front = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private float fraction;
+
+        ProgressLine(android.content.Context c) {
+            super(c);
+            back.setColor(0x40ffffff);
+            front.setColor(0xe6ffffff);
+        }
+
+        void setFraction(float f) {
+            if (Math.abs(f - fraction) > 0.0005f) { fraction = f; invalidate(); }
+        }
+
+        @Override
+        protected void onDraw(Canvas c) {
+            float r = getHeight() / 2f;
+            c.drawRoundRect(new android.graphics.RectF(0, 0, getWidth(), getHeight()), r, r, back);
+            c.drawRoundRect(new android.graphics.RectF(0, 0, getWidth() * Math.max(0, Math.min(1, fraction)), getHeight()), r, r, front);
+        }
+    }
+}
