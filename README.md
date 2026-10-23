@@ -135,3 +135,5 @@ ANDROID_SDK=/c/android-sdk sh android/build.sh
 [MIT](LICENSE)
 
 Иконка — фан-арт с Clawd, персонажем Claude Code. Персонаж принадлежит Anthropic, и лицензия MIT на него не распространяется: она касается только кода проекта. Проект не связан с Anthropic.
+
+`NowPlayingServer.exe` содержит FFmpeg 7.1 из пакета [imageio-ffmpeg](https://github.com/imageio/imageio-ffmpeg) 0.6.0 (сборка [imageio-binaries](https://github.com/imageio/imageio-binaries)), с его помощью готовится видео для фона. FFmpeg распространяется по лицензии GNU GPL, а не MIT. Исходный код: [ffmpeg-7.1.tar.xz](https://ffmpeg.org/releases/ffmpeg-7.1.tar.xz), подробнее на [ffmpeg.org/legal.html](https://ffmpeg.org/legal.html).
