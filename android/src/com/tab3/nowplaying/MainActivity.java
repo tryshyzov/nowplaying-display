@@ -134,17 +134,17 @@ public class MainActivity extends Activity {
 
     private Typeface fontMedium, fontSemiBold, fontExtraBold;
 
-    /** Manrope из assets; если файла нет — системный шрифт. */
+    /** Inter из assets (похож на SF Pro из Apple Music); если файла нет — системный шрифт. */
     private Typeface font(String name, Typeface fallback) {
-        try { return Typeface.createFromAsset(getAssets(), "fonts/Manrope-" + name + ".ttf"); }
+        try { return Typeface.createFromAsset(getAssets(), "fonts/Inter-" + name + ".ttf"); }
         catch (Exception e) { return fallback; }
     }
 
     private TextView text(float sp, boolean bold, int alpha) {
         if (fontMedium == null) {
-            fontMedium = font("Medium", Typeface.DEFAULT);
-            fontSemiBold = font("SemiBold", Typeface.DEFAULT_BOLD);
-            fontExtraBold = font("ExtraBold", Typeface.DEFAULT_BOLD);
+            fontMedium = font("Medium", Typeface.DEFAULT);                  // исполнитель, время, дата
+            fontSemiBold = font("DisplaySemiBold", Typeface.DEFAULT_BOLD);  // часы
+            fontExtraBold = font("DisplayBold", Typeface.DEFAULT_BOLD);     // название и текст песни
         }
         TextView t = new TextView(this);
         t.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp);
@@ -216,7 +216,7 @@ public class MainActivity extends Activity {
         right.addView(unsynced);
 
         lyrics = new LyricsView(this);
-        lyrics.setTypeface(fontSemiBold);
+        lyrics.setTypeface(fontExtraBold);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1);
         lp.topMargin = dp(18);
         lp.bottomMargin = dp(12);
@@ -242,6 +242,7 @@ public class MainActivity extends Activity {
         idle.setOrientation(LinearLayout.VERTICAL);
         idle.setGravity(Gravity.CENTER);
         clock = text(130, false, 255);
+        clock.setTypeface(fontSemiBold);
         date = text(26, false, 190);
         idle.addView(clock);
         idle.addView(date);
@@ -253,7 +254,7 @@ public class MainActivity extends Activity {
         root.addView(status, sp);
 
         flashIcon = text(90, true, 230);
-        flashIcon.setTypeface(Typeface.DEFAULT_BOLD); // значков ▶ ❚❚ в Manrope нет
+        flashIcon.setTypeface(Typeface.DEFAULT_BOLD); // значков ▶ ❚❚ в Inter нет
         flashIcon.setAlpha(0f);
         root.addView(flashIcon, new FrameLayout.LayoutParams(-2, -2, Gravity.CENTER));
 

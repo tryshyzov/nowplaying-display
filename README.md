@@ -127,7 +127,7 @@ ANDROID_SDK=/c/android-sdk sh android/build.sh
 | `GET /api/lyrics/<id>` | синхронный текст `[{t, text}]` или обычный текст |
 | `GET /api/control/{toggle,next,prev}` | управление текущим плеером Windows |
 
-Приложение (`android/`) написано на Java: minSdk 16, targetSdk 17, без сторонних библиотек. Шрифт — [Manrope](https://github.com/google/fonts/tree/main/ofl/manrope) (SIL Open Font License, `android/assets/fonts/OFL.txt`), начертания Medium, SemiBold и ExtraBold нарезаны из вариативного файла.
+Приложение (`android/`) написано на Java: minSdk 16, targetSdk 17, без сторонних библиотек. Шрифт — [Inter 4.1](https://github.com/rsms/inter) (SIL Open Font License, `android/assets/fonts/LICENSE-Inter.txt`): Inter Display Bold для названия и текста песни, Inter Display SemiBold для часов, Inter Medium для остального. Файлы урезаны до латиницы и кириллицы. Он похож на SF Pro из Apple Music, а SF Pro встраивать в Android-приложения лицензия Apple не разрешает.
 
 ## Лицензия
 
