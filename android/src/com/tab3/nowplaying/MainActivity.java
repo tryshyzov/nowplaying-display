@@ -231,6 +231,9 @@ public class MainActivity extends Activity {
         timeLeft = text(14, false, 170);
         timeRight = text(14, false, 170);
         timeRight.setGravity(Gravity.RIGHT);
+        // у мелкого текста у края тень обрезается и выглядит как тёмная палочка — убираем
+        timeLeft.setShadowLayer(0, 0, 0, 0);
+        timeRight.setShadowLayer(0, 0, 0, 0);
         times.addView(timeLeft, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
         times.addView(timeRight, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
         right.addView(times);
