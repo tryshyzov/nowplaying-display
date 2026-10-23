@@ -246,9 +246,14 @@ public class MainActivity extends Activity {
         idle.setGravity(Gravity.CENTER);
         clock = text(130, false, 255);
         clock.setTypeface(fontSemiBold);
+        clock.setGravity(Gravity.CENTER_HORIZONTAL);
+        clock.setIncludeFontPadding(false);   // без лишнего отступа шрифта над цифрами
         date = text(26, false, 190);
-        idle.addView(clock);
-        idle.addView(date);
+        date.setGravity(Gravity.CENTER_HORIZONTAL);
+        idle.addView(clock, new LinearLayout.LayoutParams(-2, -2));
+        LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(-2, -2);
+        dlp.topMargin = dp(6);
+        idle.addView(date, dlp);
         root.addView(idle, new FrameLayout.LayoutParams(-2, -2, Gravity.CENTER));
 
         status = text(14, false, 150);
@@ -427,13 +432,22 @@ public class MainActivity extends Activity {
             clock.setText(clockFmt.format(now));
             String d = dateFmt.format(now);
             date.setText(d.substring(0, 1).toUpperCase(new Locale("ru")) + d.substring(1));
-            if (now.getSeconds() == 0) { // каждую минуту чуть сдвигаем часы, чтобы не выжигать экран
-                idle.setTranslationX(random.nextInt(dp(60)) - dp(30));
-                idle.setTranslationY(random.nextInt(dp(40)) - dp(20));
-            }
+            if (now.getSeconds() == 0) moveClock(); // раз в минуту часы переезжают — чтобы экран не выгорал
             ui.postDelayed(this, 1000 - System.currentTimeMillis() % 1000);
         }
     };
+
+    /** Плавно переносим часы в случайное место экрана (с отступом от краёв). */
+    private void moveClock() {
+        if (idle.getVisibility() != View.VISIBLE || idle.getWidth() == 0) return;
+        int margin = dp(24);
+        int maxX = Math.max(0, (root.getWidth() - idle.getWidth()) / 2 - margin);
+        int maxY = Math.max(0, (root.getHeight() - idle.getHeight()) / 2 - margin);
+        float x = maxX == 0 ? 0 : random.nextInt(2 * maxX + 1) - maxX;
+        float y = maxY == 0 ? 0 : random.nextInt(2 * maxY + 1) - maxY;
+        idle.animate().translationX(x).translationY(y).setDuration(4000)
+                .setInterpolator(new android.view.animation.AccelerateDecelerateInterpolator()).start();
+    }
 
     private void askServer() {
         final EditText e = new EditText(this);
