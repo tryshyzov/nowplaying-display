@@ -15,6 +15,7 @@ import sys
 import threading
 import time
 import winreg
+import logging
 
 import pystray
 from aiohttp import web
@@ -145,6 +146,13 @@ def now_playing_text():
 def main():
     os.makedirs(DATA_DIR, exist_ok=True)
     log_path = server.setup_logging(DATA_DIR)
+    # любые необработанные ошибки — в журнал, иначе без консоли программа «молча» пропадает
+    import logging
+    log = logging.getLogger('nowplaying')
+    sys.excepthook = lambda t, v, tb: log.critical('crash', exc_info=(t, v, tb))
+    threading.excepthook = lambda a: log.critical('crash in thread %s', a.thread and a.thread.name,
+                                                  exc_info=(a.exc_type, a.exc_value, a.exc_traceback))
+    log.info('NowPlaying Server started (pid %d)', os.getpid())
 
     # один экземпляр
     kernel32.CreateMutexW(None, False, 'Local\\NowPlayingServer')
@@ -201,14 +209,19 @@ def main():
                         'Откройте «Сейчас играет» на планшете — он найдёт компьютер сам.', APP_NAME)
         last_fw_check = time.time()
         while srv.is_alive():
-            icon.title = f'{APP_NAME}\n{now_playing_text()}'[:127]
-            if not fw['ok'] and time.time() - last_fw_check > 20:  # после окна UAC
-                fw['ok'] = firewall_ok()
-                last_fw_check = time.time()
-            icon.update_menu()
+            try:
+                icon.title = f'{APP_NAME}\n{now_playing_text()}'[:127]
+                if not fw['ok'] and time.time() - last_fw_check > 20:  # после окна UAC
+                    fw['ok'] = firewall_ok()
+                    last_fw_check = time.time()
+                icon.update_menu()
+            except Exception:
+                logging.getLogger('nowplaying').exception('tray refresh')
             time.sleep(3)
+        logging.getLogger('nowplaying').warning('server thread stopped')
 
     icon.run(setup=refresher)
+    logging.getLogger('nowplaying').info('tray closed, exiting')
 
 
 if __name__ == '__main__':

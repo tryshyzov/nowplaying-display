@@ -137,7 +137,7 @@ public class MainActivity extends Activity {
     /** Inter из assets (похож на SF Pro из Apple Music); если файла нет — системный шрифт. */
     private Typeface font(String name, Typeface fallback) {
         try { return Typeface.createFromAsset(getAssets(), "fonts/Inter-" + name + ".ttf"); }
-        catch (Exception e) { return fallback; }
+        catch (Exception e) { android.util.Log.w("NowPlaying", "font " + name + ": " + e); return fallback; }
     }
 
     private TextView text(float sp, boolean bold, int alpha) {

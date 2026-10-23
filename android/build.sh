@@ -17,13 +17,16 @@ cd "$B"
 
 "$BT/aapt2.exe" compile --dir res -o res.zip
 "$BT/aapt2.exe" link -I "$JAR" --manifest AndroidManifest.xml --java gen \
-    --min-sdk-version 16 --target-sdk-version 17 $( [ -d assets ] && echo "-A assets" ) -o base.apk res.zip
+    --min-sdk-version 16 --target-sdk-version 17 -o base.apk res.zip
 
 javac -encoding UTF-8 -source 8 -target 8 -nowarn -Xlint:-options -bootclasspath "$JAR" -d classes \
     $(find src gen -name '*.java')
 "$BT/d8.bat" --min-api 16 --release --lib "$JAR" --output dex $(find classes -name '*.class')
 
 cp base.apk unsigned.apk
+# assets добавляем сами: aapt2 на Windows пишет в APK пути с «\» (assets/fonts\x.ttf),
+# и Android такие файлы не находит. jar пишет нормальные «/», 0 — без сжатия.
+if [ -d assets ]; then jar uf0 unsigned.apk assets; fi
 (cd dex && jar uf ../unsigned.apk classes.dex 2>/dev/null || python -c "import zipfile;z=zipfile.ZipFile('../unsigned.apk','a');z.write('classes.dex');z.close()")
 "$BT/zipalign.exe" -f -p 4 unsigned.apk aligned.apk
 

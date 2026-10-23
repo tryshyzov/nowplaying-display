@@ -193,6 +193,7 @@ async def improve_art(app, tid, title, artist):
 
 async def poll_loop(app):
     mgr = await SessionManager.request_async()
+    current['mgr'] = mgr
     while True:
         try:
             await update_state(app, mgr)
@@ -324,6 +325,10 @@ async def h_now(request):
 
 async def h_control(request):
     s = current.get('session')
+    if s is None and current.get('mgr') is not None:
+        # на паузе плеер может ненадолго «спрятать» трек — берём текущую или любую сессию Windows
+        mgr = current['mgr']
+        s = mgr.get_current_session() or next(iter(mgr.get_sessions()), None)
     if s is None:
         raise web.HTTPNotFound()
     action = request.match_info['action']
