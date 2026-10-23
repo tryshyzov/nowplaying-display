@@ -132,3 +132,5 @@ ANDROID_SDK=/c/android-sdk sh android/build.sh
 ## Лицензия
 
 [MIT](LICENSE)
+
+Иконка — фан-арт с Clawd, персонажем Claude Code. Персонаж принадлежит Anthropic, и лицензия MIT на него не распространяется: она касается только кода проекта. Проект не связан с Anthropic.
