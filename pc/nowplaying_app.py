@@ -6,22 +6,47 @@
     TCP 47801 и UDP 47800 — только для локальной сети.
 В меню значка: что играет, адрес сервера, автозапуск, журнал, выход.
 """
-import asyncio
-import ctypes
 import os
-import socket
-import subprocess
 import sys
-import threading
 import time
-import winreg
-import logging
+import traceback
 
-import pystray
-from aiohttp import web
-from PIL import Image
+# Самая первая запись — до тяжёлых импортов: так видно, запускала ли Windows программу вообще
+# и на чём она упала, даже если основной журнал ещё не успел открыться.
+_STARTUP_LOG = os.path.join(os.environ.get('LOCALAPPDATA') or os.path.expanduser('~'), 'NowPlaying', 'startup.log')
 
-import server
+
+def _startup_note(text):
+    try:
+        os.makedirs(os.path.dirname(_STARTUP_LOG), exist_ok=True)
+        if os.path.exists(_STARTUP_LOG) and os.path.getsize(_STARTUP_LOG) > 200_000:
+            os.replace(_STARTUP_LOG, _STARTUP_LOG + '.old')
+        with open(_STARTUP_LOG, 'a', encoding='utf-8') as f:
+            f.write(f'{time.strftime("%Y-%m-%d %H:%M:%S")} pid={os.getpid()} {text}\n')
+    except Exception:
+        pass
+
+
+_startup_note(f'launch cwd={os.getcwd()!r} exe={sys.executable!r}')
+
+try:
+    import asyncio
+    import ctypes
+    import socket
+    import subprocess
+    import threading
+    import winreg
+    import logging
+
+    import pystray
+    from aiohttp import web
+    from PIL import Image
+
+    import server
+except Exception:
+    _startup_note('import failed:\n' + traceback.format_exc())
+    raise
+_startup_note('imports ok')
 
 APP_NAME = 'NowPlaying Server'
 RUN_KEY = r'Software\Microsoft\Windows\CurrentVersion\Run'
@@ -157,6 +182,7 @@ def main():
     # один экземпляр
     kernel32.CreateMutexW(None, False, 'Local\\NowPlayingServer')
     if kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+        _startup_note('already running, exit')
         message('NowPlaying Server уже запущен — значок в трее рядом с часами.')
         return
 
@@ -229,4 +255,23 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        # сразу после включения ПК даём Windows дособрать панель задач, иначе значок в трее может не встать
+        ctypes.windll.kernel32.GetTickCount64.restype = ctypes.c_ulonglong
+        uptime = ctypes.windll.kernel32.GetTickCount64() / 1000
+        if uptime < 180:
+            _startup_note(f'early start (uptime {uptime:.0f}s), waiting 20s')
+            time.sleep(20)
+        main()
+        _startup_note('exit normally')
+    except SystemExit:
+        _startup_note('exit (SystemExit)')
+        raise
+    except Exception:
+        _startup_note('crash: ' + traceback.format_exc())
+        try:
+            ctypes.windll.user32.MessageBoxW(None, 'NowPlaying Server упал при запуске. Подробности: ' + _STARTUP_LOG,
+                                             'NowPlaying Server', 0x10)
+        except Exception:
+            pass
+        raise
