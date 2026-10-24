@@ -7,6 +7,16 @@
 - фон под цвет обложки;
 - большие часы, когда музыка не играет.
 
+<p align="center"><img src="docs/screenshots/icon.png" width="120" alt="Иконка NowPlaying"></p>
+
+![Экран с треком: обложка, исполнитель и синхронный текст](docs/screenshots/player.png)
+
+| Часы, когда музыка не играет | Часы с фоном (фото, гифка или видео) |
+|---|---|
+| ![Часы](docs/screenshots/clock.png) | ![Часы с фоном](docs/screenshots/clock-background.png) |
+
+*Скриншоты сняты с Galaxy Tab 3 Lite (1024×600).*
+
 Работает с любым плеером, который показывается в панели Windows «Сейчас играет»: Яндекс Музыка, Spotify, музыка в браузере и т. д. Ролики короче 45 секунд, TikTok и YouTube Shorts не показываются.
 
 ```
