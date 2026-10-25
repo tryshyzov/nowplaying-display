@@ -16,19 +16,13 @@ import time
 
 import aiohttp
 
+import yandex
 from background import NO_WINDOW, ffmpeg_exe
 
 log = logging.getLogger('nowplaying')
 
-YM_API = 'https://api.music.yandex.net'
 KEEP = 20                  # не больше стольких видео
 MAX_AGE = 12 * 3600        # видео, которое столько не показывалось, удаляется
-
-
-def norm(s):
-    s = (s or '').lower().replace('ё', 'е')
-    s = re.sub(r'\s*[\(\[][^\)\]]*[\)\]]', '', s)   # (feat. …), [Explicit] и т. п.
-    return re.sub(r'[^\w]+', ' ', s).strip()
 
 
 class Clips:
@@ -94,44 +88,19 @@ class Clips:
         finally:
             self.jobs.pop(tid, None)
 
-    @staticmethod
-    async def api(http, path, params=None):
-        for attempt in range(2):  # Яндекс иногда отвечает пустотой на первый запрос
-            async with http.get(f'{YM_API}/{path}', params=params) as r:
-                if r.status == 200:
-                    try:
-                        return ((await r.json(content_type=None)) or {}).get('result')
-                    except ValueError:
-                        pass
-            await asyncio.sleep(1)
-        return None
-
     async def find(self, http, title, artist, dur_ms):
         """(вид, [ссылки на видео по порядку предпочтения]) или (None, [])."""
-        res = await self.api(http, 'search', {'text': f'{artist} {title}'.strip(), 'type': 'track', 'page': '0'})
-        tracks = ((res or {}).get('tracks') or {}).get('results') or []
-        want_title = norm(title)
-        want_artists = {norm(a) for a in re.split(r',|&| feat\.? | ft\.? ', artist or '', flags=re.I) if a.strip()}
-        matches = []
-        for t in tracks:
-            if norm(t.get('title')) != want_title:
-                continue
-            names = {norm(a.get('name')) for a in t.get('artists') or []}
-            if want_artists and not (names & want_artists):
-                continue
-            if dur_ms and t.get('durationMs') and abs(t['durationMs'] - dur_ms) > 6000:
-                continue
-            matches.append(t)
+        matches = await yandex.find_tracks(http, title, artist, dur_ms)
         for t in matches:
             if t.get('backgroundVideoUri'):
                 return 'shot', [t['backgroundVideoUri']]
         # видеошота нет — ищем клип (clipIds есть только в полной карточке трека)
         for t in matches[:3]:
-            full = await self.api(http, f'tracks/{t["id"]}')
+            full = await yandex.api(http, f'tracks/{t["id"]}')
             ids = (full[0] if full else {}).get('clipIds') or []
             if not ids:
                 continue
-            clip = await self.api(http, 'clips', {'clipIds': ','.join(str(i) for i in ids[:3])})
+            clip = await yandex.api(http, 'clips', {'clipIds': ','.join(str(i) for i in ids[:3])})
             for c in clip or []:
                 prev = c.get('previewUrl') or ''
                 if prev:

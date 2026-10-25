@@ -33,6 +33,7 @@ from winrt.windows.storage.streams import Buffer, InputStreamOptions
 
 import background
 import clips
+import yandex
 
 HTTP_PORT = int(os.environ.get('NP_HTTP_PORT', '47801'))
 UDP_PORT = int(os.environ.get('NP_UDP_PORT', '47800'))
@@ -309,7 +310,16 @@ async def fetch_lyrics(app, tid, title, artist, album, dur):
             result = {'synced': [], 'plain': plain[0]['plainLyrics']}
     except Exception as e:
         log.warning('lyrics: %s', e)
-    log.info('lyrics for %s — %s: synced %d, plain %d', artist, title, len(result['synced']), len(result['plain']))
+    source = 'lrclib'
+    # запасной источник обычного текста — Яндекс Музыка
+    if not result['synced'] and not result['plain']:
+        try:
+            result['plain'] = await yandex.plain_lyrics(app['http'], title, artist, dur)
+            source = 'yandex'
+        except Exception as e:
+            log.warning('lyrics yandex: %s', e)
+    log.info('lyrics for %s — %s: synced %d, plain %d (%s)', artist, title, len(result['synced']),
+             len(result['plain']), source)
     lyrics[tid] = result
     lyrics_jobs.pop(tid, None)
     if len(lyrics) > 50:

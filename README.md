@@ -24,7 +24,7 @@ Works with any player that shows up in the Windows media overlay (the "Now Playi
 ```
 Player on the PC ──► Windows media overlay ──► server on the PC ──Wi-Fi──► app on the tablet
                                                       │
-                                    covers: iTunes, Deezer · lyrics: LRCLIB · video: Yandex Music
+                                    covers: iTunes, Deezer · lyrics: LRCLIB, Yandex Music · video: Yandex Music
 ```
 
 > **Note:** the app and the tray program are in Russian. The guide below gives each Russian label with an English translation.
@@ -130,7 +130,7 @@ On the first build a signing key, `nowplaying.keystore`, is created next to the 
 ## Troubleshooting
 
 - **The tablet can't find the PC.** Check that the server icon is in the tray and that its menu doesn't show «Разрешить в брандмауэре…» (allow in firewall). Make sure the tablet and the PC are on the same network and the router doesn't isolate Wi-Fi clients from each other. You can also enter the address manually with a long press.
-- **No lyrics.** Lyrics come from the open [LRCLIB](https://lrclib.net) database. Synced lyrics are used only if the track length matches (±4 s). Rare tracks may have no lyrics at all.
+- **No lyrics.** Lyrics come from the open [LRCLIB](https://lrclib.net) database. Synced lyrics are used only if the track length matches (±4 s). If LRCLIB has nothing, plain lyrics (without timing) are taken from Yandex Music. Rare tracks may have no lyrics at all. Lyrics and video are looked up by artist and title, so they work the same for every player, Spotify and Apple Music included.
 - **Blurry cover.** A small cover from Windows is shown first, then the server looks for a sharp one on iTunes (600 px) and Deezer (1000 px). The sharp one is used only if the title and at least one artist match.
 - **Music doesn't show up.** Check whether the track appears in the Windows media overlay (the volume flyout in the tray). If it isn't there, the server can't see it either.
 
