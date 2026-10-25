@@ -1,92 +1,97 @@
-# NowPlaying — экран «Сейчас играет» для старого планшета
+# NowPlaying — a "Now Playing" screen for an old tablet
 
-Превращает старый Android-планшет (проверено на Samsung Galaxy Tab 3 Lite, Android 4.2) в экран у компьютера. На нём показывается то, что сейчас играет на ПК с Windows:
+**English** | [Русский](README.ru.md)
 
-- обложка, название, исполнитель и полоса прогресса;
-- **синхронный текст песни**, который подсвечивается вместе с музыкой;
-- фон под цвет обложки;
-- большие часы, когда музыка не играет.
+Turns an old Android tablet (tested on a Samsung Galaxy Tab 3 Lite, Android 4.2) into a display next to your computer. It shows whatever is playing on your Windows PC:
 
-<p align="center"><img src="docs/screenshots/icon.png" width="120" alt="Иконка NowPlaying"></p>
+- cover art, title, artist and a progress bar;
+- **synced lyrics** that highlight along with the music;
+- a background tinted to match the cover;
+- a big clock when nothing is playing.
 
-![Экран с треком: обложка, исполнитель и синхронный текст](docs/screenshots/player.png)
+<p align="center"><img src="docs/screenshots/icon.png" width="120" alt="NowPlaying icon"></p>
 
-| Часы, когда музыка не играет | Часы с фоном (фото, гифка или видео) |
+![Track screen: cover, artist and synced lyrics](docs/screenshots/player.png)
+
+| Clock when nothing is playing | Clock with a background (photo, GIF or video) |
 |---|---|
-| ![Часы](docs/screenshots/clock.png) | ![Часы с фоном](docs/screenshots/clock-background.png) |
+| ![Clock](docs/screenshots/clock.png) | ![Clock with a background](docs/screenshots/clock-background.png) |
 
-*Скриншоты сняты с Galaxy Tab 3 Lite (1024×600).*
+*Screenshots taken on a Galaxy Tab 3 Lite (1024×600).*
 
-Работает с любым плеером, который показывается в панели Windows «Сейчас играет»: Яндекс Музыка, Spotify, музыка в браузере и т. д. Ролики короче 45 секунд, TikTok и YouTube Shorts не показываются.
+Works with any player that shows up in the Windows media overlay (the "Now Playing" panel): Yandex Music, Spotify, music in a browser and so on. Clips shorter than 45 seconds, TikTok and YouTube Shorts are ignored.
 
 ```
-Плеер на ПК ──► панель Windows «Сейчас играет» ──► сервер на ПК ──Wi-Fi──► приложение на планшете
-                                                       │
-                                     обложки: iTunes, Deezer · тексты: LRCLIB
+Player on the PC ──► Windows media overlay ──► server on the PC ──Wi-Fi──► app on the tablet
+                                                      │
+                                    covers: iTunes, Deezer · lyrics: LRCLIB
 ```
 
-## Что нужно
+> **Note:** the app and the tray program are in Russian. The guide below gives each Russian label with an English translation.
+
+## Requirements
 
 | | |
 |---|---|
-| **ПК** | Windows 10 или 11. Python ставить не нужно, он встроен в программу |
-| **Планшет** | Android 4.1 и новее, в той же сети Wi-Fi, что и ПК |
+| **PC** | Windows 10 or 11. No need to install Python, it is built into the program |
+| **Tablet** | Android 4.1 or newer, on the same Wi-Fi network as the PC |
 
-## Установка
+## Installation
 
-Скачайте два файла со страницы [последнего релиза](../../releases/latest):
+Download two files from the [latest release](../../releases/latest):
 
-- `NowPlayingServer.exe` для ПК;
-- `NowPlaying-1.4.apk` для планшета.
+- `NowPlayingServer.exe` for the PC;
+- `NowPlaying-1.4.apk` for the tablet.
 
-### 1. Сервер на ПК
+### 1. Server on the PC
 
-1. Положите `NowPlayingServer.exe` в постоянное место, например `%LOCALAPPDATA%\NowPlaying\`. Автозапуск будет ссылаться на этот путь.
-2. Запустите его. Окна не будет, рядом с часами появится значок ♫.
-3. При первом запуске программа:
-   - **добавит себя в автозагрузку Windows**, это отключается в меню значка;
-   - **спросит разрешение (окно UAC)** открыть в брандмауэре два порта, только для домашней сети. Нажмите «Да», иначе планшет не сможет подключиться.
+1. Put `NowPlayingServer.exe` somewhere permanent, for example `%LOCALAPPDATA%\NowPlaying\`. Autostart will point to this location.
+2. Run it. No window opens; a ♫ icon appears in the system tray next to the clock.
+3. On first launch the program:
+   - **adds itself to Windows startup** (you can turn this off in the tray menu);
+   - **asks for permission (a UAC prompt)** to open two firewall ports, for the local network only. Click "Yes", otherwise the tablet can't connect.
 
-Windows SmartScreen может предупредить, что программа неизвестна: она не подписана сертификатом разработчика. Нажмите «Подробнее» → «Выполнить в любом случае».
+Windows SmartScreen may warn that the program is unrecognized, because it isn't signed with a developer certificate. Click "More info" → "Run anyway".
 
-Меню значка (правая кнопка мыши):
+Tray menu (right-click the icon):
 
-| Пункт | Что делает |
+| Item | What it does |
 |---|---|
-| ▶ Исполнитель — Песня | что сейчас играет |
-| Адрес для планшета | IP и порт, если вводить вручную |
-| Запускать вместе с Windows | вкл/выкл автозапуск |
-| Разрешить в брандмауэре… | появляется, если порты закрыты |
-| Открыть журнал | `%LOCALAPPDATA%\NowPlaying\server.log` |
-| Выход | остановить сервер |
+| ▶ Artist — Song | what is playing now |
+| Адрес для планшета (address for the tablet) | IP and port, if you need to enter it manually |
+| Запускать вместе с Windows (start with Windows) | turn autostart on or off |
+| Разрешить в брандмауэре… (allow in firewall…) | shown only if the ports are closed |
+| Папка фона для часов… (clock background folder…) | opens the folder for the clock background |
+| Открыть журнал (open log) | `%LOCALAPPDATA%\NowPlaying\server.log` |
+| Выход (exit) | stop the server |
 
-### 2. Приложение на планшете
+### 2. App on the tablet
 
-Скопируйте `NowPlaying-1.4.apk` на планшет и установите. В настройках планшета для этого нужно разрешить установку из неизвестных источников.
+Copy `NowPlaying-1.4.apk` to the tablet and install it. You'll need to allow installs from unknown sources in the tablet settings.
 
-Запустите «Сейчас играет». Приложение **само найдёт ПК** в сети и начнёт показывать музыку. Если не нашло, сделайте долгое нажатие на экран и введите адрес из меню значка на ПК.
+Open the «Сейчас играет» ("Now Playing") app. It **finds the PC on its own** and starts showing your music. If it doesn't, long-press the screen and enter the address shown in the tray menu on the PC.
 
-## Управление на планшете
+## Tablet controls
 
-| Жест | Действие |
+| Gesture | Action |
 |---|---|
-| Тап | пауза / продолжить |
-| Свайп влево | следующий трек |
-| Свайп вправо | предыдущий трек |
-| Долгое нажатие | ввести адрес ПК вручную |
+| Tap | pause / resume |
+| Swipe left | next track |
+| Swipe right | previous track |
+| Long press | enter the PC address manually |
 
-Как ещё ведёт себя приложение:
+Other things the app does:
 
-- **Экран не гаснет**, приложение показывается поверх экрана блокировки и **запускается само** после включения планшета.
-- **Когда музыка на паузе больше минуты**, показываются часы. Раз в минуту они немного сдвигаются, чтобы не выжигать экран.
-- **Яркость меняется сама**: с музыкой как в системе, ночью (с 23 до 8) 10%; на часах 15%, ночью 2%.
-- **Фон для часов:** положи фото, гифку или видео в папку `Изображения\NowPlaying` на ПК (или открой её через меню значка: «Папка фона для часов…»). Берётся самый новый файл. Сервер сам готовит его под планшет: фото уменьшает, видео и гифки перекодирует в MP4 до 720p, без звука, до 2 минут. На планшете фон идёт на весь экран под часами, слегка затемнённый, видео по кругу.
-- **Через 30 минут без музыки** экран становится чёрным. Тап будит его на минуту, новая музыка будит сразу.
-- **Если нашёлся только обычный текст** без таймингов, под исполнителем написано «текст без синхронизации».
+- **The screen stays on**, the app shows on top of the lock screen and **starts automatically** when the tablet boots.
+- **When music is paused for more than a minute**, a clock appears. Once a minute it moves to a new spot to avoid screen burn-in.
+- **Brightness adjusts itself**: with music it follows the system setting, at night (11 pm to 8 am) 10%; on the clock 15%, at night 2%.
+- **Clock background:** put a photo, GIF or video into the `Pictures\NowPlaying` folder on the PC (or open it from the tray menu). The newest file is used. The server prepares it for the tablet by itself: photos are downscaled, videos and GIFs are converted to MP4 up to 720p, without sound, up to 2 minutes. On the tablet the background fills the screen behind the clock, slightly dimmed; videos loop.
+- **After 30 minutes without music** the screen goes black. A tap wakes it for a minute, new music wakes it right away.
+- **If only plain lyrics were found** (no timings), the app shows «текст без синхронизации» ("lyrics not synced") under the artist.
 
-## Запуск сервера из исходников
+## Running the server from source
 
-Нужен Python 3.10+. В папке `pc`:
+You need Python 3.10+. In the `pc` folder:
 
 ```powershell
 python -m venv .venv
@@ -94,56 +99,56 @@ python -m venv .venv
 .venv\Scripts\python nowplaying_app.py
 ```
 
-`nowplaying_app.py` запускает сервер со значком в трее, `server.py` — только сервер в консоли.
+`nowplaying_app.py` runs the server with the tray icon; `server.py` runs just the server in a console.
 
-Чтобы собрать свой `NowPlayingServer.exe`, поставьте PyInstaller (`.venv\Scripts\python -m pip install pyinstaller`) и выполните `sh pc/build_exe.sh` в Git Bash. Результат появится в `release/`.
+To build your own `NowPlayingServer.exe`, install PyInstaller (`.venv\Scripts\python -m pip install pyinstaller`) and run `sh pc/build_exe.sh` in Git Bash. The result goes to `release/`.
 
-## Сборка приложения
+## Building the app
 
-Приложение собирается без Gradle и Android Studio, скриптом `android/build.sh`. Он рассчитан на Windows и запускается из Git Bash.
+The app is built without Gradle or Android Studio, using `android/build.sh`. The script is meant for Windows and runs in Git Bash.
 
-Что понадобится:
+You'll need:
 
-- **JDK 17**: команды `javac`, `jar` и `keytool` должны быть доступны в PATH.
-- **Android SDK** с пакетами `build-tools;34.0.0` и `platforms;android-17`. Их можно поставить через `sdkmanager` из Android command-line tools.
+- **JDK 17**: `javac`, `jar` and `keytool` must be on the PATH.
+- **Android SDK** with the `build-tools;34.0.0` and `platforms;android-17` packages. You can install them with `sdkmanager` from the Android command-line tools.
 
-Путь к SDK укажите в переменной `ANDROID_SDK` или `ANDROID_HOME`. В пути не должно быть кириллицы и пробелов: на них инструменты Android ломаются.
+Set the SDK path in `ANDROID_SDK` or `ANDROID_HOME`. The path must not contain spaces or non-Latin characters: the Android tools break on them.
 
 ```bash
 ANDROID_SDK=/c/android-sdk sh android/build.sh
 ```
 
-Готовый файл появится в `android/NowPlaying.apk`.
+The finished file appears at `android/NowPlaying.apk`.
 
-При первой сборке рядом с SDK создаётся ключ подписи `nowplaying.keystore`, а другой можно указать переменной `KEYSTORE`. **Сохраните этот ключ**: без него новую версию не получится поставить поверх старой, придётся удалять приложение. В репозиторий ключ не попадает.
+On the first build a signing key, `nowplaying.keystore`, is created next to the SDK; you can point to a different one with `KEYSTORE`. **Keep this key**: without it a new version can't be installed over the old one, and you'd have to uninstall the app first. The key is never added to the repository.
 
-## Если что-то не работает
+## Troubleshooting
 
-- **Планшет не находит ПК.** Проверьте, что значок сервера есть в трее, а в его меню нет пункта «Разрешить в брандмауэре…». Убедитесь, что планшет и ПК в одной сети и роутер не изолирует Wi-Fi-клиентов друг от друга. Можно ввести адрес вручную долгим нажатием.
-- **Нет текста песни.** Тексты берутся из открытой базы [LRCLIB](https://lrclib.net). Синхронный текст подставляется, только если длительность трека совпала (±4 с). Для редких треков текста может не быть.
-- **Обложка мутная.** Сначала показывается маленькая обложка из Windows, затем сервер ищет чёткую в iTunes (600 px) и Deezer (1000 px). Чёткая подставляется, только если совпали название и хотя бы один исполнитель.
-- **Музыка не появляется.** Проверьте, показывается ли трек в панели Windows «Сейчас играет» (значок громкости в трее). Если там его нет, сервер его тоже не видит.
+- **The tablet can't find the PC.** Check that the server icon is in the tray and that its menu doesn't show «Разрешить в брандмауэре…» (allow in firewall). Make sure the tablet and the PC are on the same network and the router doesn't isolate Wi-Fi clients from each other. You can also enter the address manually with a long press.
+- **No lyrics.** Lyrics come from the open [LRCLIB](https://lrclib.net) database. Synced lyrics are used only if the track length matches (±4 s). Rare tracks may have no lyrics at all.
+- **Blurry cover.** A small cover from Windows is shown first, then the server looks for a sharp one on iTunes (600 px) and Deezer (1000 px). The sharp one is used only if the title and at least one artist match.
+- **Music doesn't show up.** Check whether the track appears in the Windows media overlay (the volume flyout in the tray). If it isn't there, the server can't see it either.
 
-## Для разработчиков
+## For developers
 
-Сервер (`pc/server.py`) написан на Python: aiohttp, winrt, Pillow. Данные хранит только в памяти. Значок в трее, автозапуск (раздел реестра `Run` текущего пользователя) и правила брандмауэра реализованы в `pc/nowplaying_app.py` на pystray.
+The server (`pc/server.py`) is written in Python with aiohttp, winrt and Pillow. It keeps all data in memory only. The tray icon, autostart (the current user's `Run` registry key) and firewall rules live in `pc/nowplaying_app.py`, built on pystray.
 
-- **Порты:** TCP 47801 для HTTP, UDP 47800 для автопоиска. Их можно поменять переменными `NP_HTTP_PORT` и `NP_UDP_PORT`.
-- **HTTPS-запросы** проверяются через хранилище сертификатов Windows (`truststore`).
+- **Ports:** TCP 47801 for HTTP, UDP 47800 for discovery. You can change them with `NP_HTTP_PORT` and `NP_UDP_PORT`.
+- **HTTPS requests** are verified against the Windows certificate store (`truststore`).
 
-| Запрос | Что возвращает |
+| Request | Returns |
 |---|---|
-| `GET /api/now` | трек, статус, позиция, цвет фона |
-| `GET /art/<id>.jpg` | обложка 480 px |
-| `GET /api/lyrics/<id>` | синхронный текст `[{t, text}]` или обычный текст |
-| `GET /api/control/{toggle,next,prev}` | управление текущим плеером Windows |
+| `GET /api/now` | track, status, position, background color |
+| `GET /art/<id>.jpg` | 480 px cover |
+| `GET /api/lyrics/<id>` | synced lyrics `[{t, text}]` or plain lyrics |
+| `GET /api/control/{toggle,next,prev}` | controls the current Windows player |
 
-Приложение (`android/`) написано на Java: minSdk 16, targetSdk 17, без сторонних библиотек. Шрифт — [Inter 4.1](https://github.com/rsms/inter) (SIL Open Font License, `android/assets/fonts/LICENSE-Inter.txt`): Inter Display Bold для названия и текста песни, Inter Display SemiBold для часов, Inter Medium для остального. Файлы урезаны до латиницы и кириллицы. Он похож на SF Pro из Apple Music, а SF Pro встраивать в Android-приложения лицензия Apple не разрешает.
+The app (`android/`) is written in Java: minSdk 16, targetSdk 17, no third-party libraries. The font is [Inter 4.1](https://github.com/rsms/inter) (SIL Open Font License, `android/assets/fonts/LICENSE-Inter.txt`): Inter Display Bold for the title and lyrics, Inter Display SemiBold for the clock, Inter Medium for everything else. The files are subset to Latin and Cyrillic. It looks similar to SF Pro from Apple Music, whose license doesn't allow embedding it in Android apps.
 
-## Лицензия
+## License
 
 [MIT](LICENSE)
 
-Иконка — фан-арт с Clawd, персонажем Claude Code. Персонаж принадлежит Anthropic, и лицензия MIT на него не распространяется: она касается только кода проекта. Проект не связан с Anthropic.
+The icon is fan art of Clawd, the Claude Code character. The character belongs to Anthropic, and the MIT license does not cover it: it applies only to the project's code. This project is not affiliated with Anthropic.
 
-`NowPlayingServer.exe` содержит FFmpeg 7.1 из пакета [imageio-ffmpeg](https://github.com/imageio/imageio-ffmpeg) 0.6.0 (сборка [imageio-binaries](https://github.com/imageio/imageio-binaries)), с его помощью готовится видео для фона. FFmpeg распространяется по лицензии GNU GPL, а не MIT. Исходный код: [ffmpeg-7.1.tar.xz](https://ffmpeg.org/releases/ffmpeg-7.1.tar.xz), подробнее на [ffmpeg.org/legal.html](https://ffmpeg.org/legal.html).
+`NowPlayingServer.exe` includes FFmpeg 7.1 from the [imageio-ffmpeg](https://github.com/imageio/imageio-ffmpeg) 0.6.0 package (an [imageio-binaries](https://github.com/imageio/imageio-binaries) build), used to prepare background videos. FFmpeg is distributed under the GNU GPL, not MIT. Source code: [ffmpeg-7.1.tar.xz](https://ffmpeg.org/releases/ffmpeg-7.1.tar.xz); see also [ffmpeg.org/legal.html](https://ffmpeg.org/legal.html).
