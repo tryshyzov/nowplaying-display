@@ -131,7 +131,7 @@ On the first build a signing key, `nowplaying.keystore`, is created next to the 
 
 ## For developers
 
-The server (`pc/server.py`) is written in Python with aiohttp, winrt and Pillow. It keeps all data in memory only. The tray icon, autostart (the current user's `Run` registry key) and firewall rules live in `pc/nowplaying_app.py`, built on pystray.
+The server (`pc/server.py`) is written in Python with aiohttp, winrt and Pillow. It keeps all data in memory only. The tray icon, autostart (a Task Scheduler "at log on" task, with the current user's `Run` registry key as a fallback) and firewall rules live in `pc/nowplaying_app.py`, built on pystray.
 
 - **Ports:** TCP 47801 for HTTP, UDP 47800 for discovery. You can change them with `NP_HTTP_PORT` and `NP_UDP_PORT`.
 - **HTTPS requests** are verified against the Windows certificate store (`truststore`).
