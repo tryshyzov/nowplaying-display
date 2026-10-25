@@ -77,23 +77,65 @@ def launch_command():
     return f'"{pythonw}" "{os.path.abspath(__file__)}"'
 
 
-def autostart_enabled():
+# Автозапуск — через Планировщик заданий («при входе в систему», с задержкой 30 с и перезапуском
+# при сбое). Раньше был раздел реестра Run, но Windows иногда молча пропускает такие записи.
+TASK_NAME = APP_NAME
+_autostart_cache = {}
+
+
+def _launch_parts():
+    if getattr(sys, 'frozen', False):
+        return sys.executable, ''
+    pythonw = os.path.join(os.path.dirname(sys.executable), 'pythonw.exe')
+    return pythonw, f'"{os.path.abspath(__file__)}"'
+
+
+def _ps(script, timeout=60):
+    return subprocess.run(['powershell', '-NoProfile', '-NonInteractive', '-Command', script],
+                          capture_output=True, text=True, timeout=timeout, creationflags=NO_WINDOW)
+
+
+def _remove_run_key():
     try:
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as k:
-            return winreg.QueryValueEx(k, APP_NAME)[0] == launch_command()
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as k:
+            winreg.DeleteValue(k, APP_NAME)
+            return True
     except OSError:
         return False
 
 
+def autostart_enabled(refresh=False):
+    if refresh or 'on' not in _autostart_cache:
+        r = subprocess.run(['schtasks', '/query', '/tn', TASK_NAME, '/fo', 'csv', '/nh'],
+                           capture_output=True, text=True, creationflags=NO_WINDOW)
+        _autostart_cache['on'] = r.returncode == 0 and 'Disabled' not in r.stdout and 'Отключено' not in r.stdout
+    return _autostart_cache['on']
+
+
 def set_autostart(on):
-    with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as k:
-        if on:
-            winreg.SetValueEx(k, APP_NAME, 0, winreg.REG_SZ, launch_command())
+    if on:
+        exe, args = _launch_parts()
+        arg = f"-Argument '{args}'" if args else ''
+        script = (
+            f"$a = New-ScheduledTaskAction -Execute '{exe}' {arg}; "
+            "$u = \"$env:USERDOMAIN\\$env:USERNAME\"; "
+            "$t = New-ScheduledTaskTrigger -AtLogOn -User $u; $t.Delay = 'PT30S'; "
+            "$s = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries "
+            "-ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) "
+            "-MultipleInstances IgnoreNew; "
+            "$p = New-ScheduledTaskPrincipal -UserId $u -LogonType Interactive -RunLevel Limited; "
+            f"Register-ScheduledTask -TaskName '{TASK_NAME}' -Action $a -Trigger $t -Settings $s -Principal $p -Force | Out-Null")
+        r = _ps(script)
+        if r.returncode != 0:
+            logging.getLogger('nowplaying').warning('scheduled task failed, using Run key: %s', r.stderr[-300:])
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as k:
+                winreg.SetValueEx(k, APP_NAME, 0, winreg.REG_SZ, launch_command())
         else:
-            try:
-                winreg.DeleteValue(k, APP_NAME)
-            except FileNotFoundError:
-                pass
+            _remove_run_key()
+    else:
+        _ps(f"Unregister-ScheduledTask -TaskName '{TASK_NAME}' -Confirm:$false -ErrorAction SilentlyContinue")
+        _remove_run_key()
+    autostart_enabled(refresh=True)
 
 
 # ---------- брандмауэр ----------
@@ -198,6 +240,11 @@ def main():
     if first_run:
         set_autostart(True)
         open(FIRST_RUN_FLAG, 'w').close()
+    elif _remove_run_key():
+        # переезд со старой версии: автозапуск был в реестре Run — переносим в Планировщик заданий
+        _startup_note('migrating autostart from Run key to Task Scheduler')
+        set_autostart(True)
+    autostart_enabled(refresh=True)
     fw = {'ok': firewall_ok()}
     if first_run and not fw['ok']:
         add_firewall_rules()
