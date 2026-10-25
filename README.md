@@ -41,7 +41,7 @@ Player on the PC ──► Windows media overlay ──► server on the PC ─�
 Download two files from the [latest release](../../releases/latest):
 
 - `NowPlayingServer.exe` for the PC;
-- `NowPlaying-1.4.apk` for the tablet.
+- `NowPlaying-1.5.apk` for the tablet.
 
 ### 1. Server on the PC
 
@@ -64,13 +64,19 @@ Tray menu (right-click the icon):
 | Видео за треком (из Яндекс Музыки) (video behind the track) | on/off for the video background |
 | Папка фона для часов… (clock background folder…) | opens the folder for the clock background |
 | Открыть журнал (open log) | `%LOCALAPPDATA%\NowPlaying\server.log` |
+| Обновить до … (update to …) | install a downloaded update now |
+| Обновляться автоматически (update automatically) | on/off for automatic updates |
 | Выход (exit) | stop the server |
 
 ### 2. App on the tablet
 
-Copy `NowPlaying-1.4.apk` to the tablet and install it. You'll need to allow installs from unknown sources in the tablet settings.
+Copy `NowPlaying-1.5.apk` to the tablet and install it. You'll need to allow installs from unknown sources in the tablet settings.
 
 Open the «Сейчас играет» ("Now Playing") app. It **finds the PC on its own** and starts showing your music. If it doesn't, long-press the screen and enter the address shown in the tray menu on the PC.
+
+### Updates
+
+Every 6 hours the server checks the [latest release](../../releases/latest) on GitHub. If there is a newer version, it downloads it, checks it against `SHA256SUMS.txt` from the same release, and installs itself once no music has been playing for 2 minutes (or right away from the tray menu). The new tablet app is downloaded by the server too and handed to the tablet over the local network, because Android 4.2 can't reach GitHub by itself. A rooted tablet installs it silently and restarts the app; otherwise the standard Android install dialog appears. Updates can be turned off in the tray menu.
 
 ## Tablet controls
 

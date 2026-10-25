@@ -35,6 +35,7 @@ try:
     import asyncio
     import ctypes
     import socket
+    import shutil
     import subprocess
     import threading
     import winreg
@@ -58,6 +59,8 @@ NO_WINDOW = 0x08000000  # CREATE_NO_WINDOW
 
 user32 = ctypes.windll.user32
 kernel32 = ctypes.windll.kernel32
+kernel32.CreateMutexW.restype = ctypes.c_void_p
+kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
 shell32 = ctypes.windll.shell32
 
 
@@ -272,10 +275,55 @@ def save_settings(**changes):
         pass
 
 
+# ---------- обновление (новый exe скачивает updater.py) ----------
+
+AFTER_UPDATE = '--after-update'
+
+
+def apply_update():
+    """Подменить свой exe скачанным и запустить новый. Запущенный exe Windows удалить не даёт,
+    но переименовать даёт: старый становится .old и удаляется при следующем запуске."""
+    log = logging.getLogger('nowplaying')
+    new, cur = server.UPDATER.exe, sys.executable
+    old = cur + '.old'
+    try:
+        if os.path.exists(old):
+            os.remove(old)
+        os.replace(cur, old)
+        try:
+            shutil.copy2(new, cur)
+        except OSError:
+            os.replace(old, cur)  # не вышло — возвращаем как было
+            raise
+    except OSError as e:
+        log.warning('update: cannot replace exe: %s', e)
+        server.UPDATER.exe = None
+        return False
+    log.info('update: replaced exe with %s, restarting', server.UPDATER.latest)
+    subprocess.Popen([cur, AFTER_UPDATE], close_fds=True,
+                     creationflags=0x00000008 | 0x00000200)  # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+    return True
+
+
+def remove_old_exe():
+    old = sys.executable + '.old'
+    for _ in range(20):   # старый процесс может ещё закрываться
+        if not os.path.exists(old):
+            return
+        try:
+            os.remove(old)
+            return
+        except OSError:
+            time.sleep(0.5)
+
+
 def main():
     os.makedirs(DATA_DIR, exist_ok=True)
     log_path = server.setup_logging(DATA_DIR)
-    server.CLIPS.enabled = load_settings().get('clips', True)
+    settings = load_settings()
+    server.CLIPS.enabled = settings.get('clips', True)
+    server.UPDATER.enabled = settings.get('auto_update', True)
+    after_update = AFTER_UPDATE in sys.argv
     # любые необработанные ошибки — в журнал, иначе без консоли программа «молча» пропадает
     import logging
     log = logging.getLogger('nowplaying')
@@ -284,12 +332,20 @@ def main():
                                                   exc_info=(a.exc_type, a.exc_value, a.exc_traceback))
     log.info('NowPlaying Server started (pid %d)', os.getpid())
 
-    # один экземпляр
-    kernel32.CreateMutexW(None, False, 'Local\\NowPlayingServer')
-    if kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+    # один экземпляр (после обновления ждём, пока старая копия закроется)
+    for attempt in range(40 if after_update else 1):
+        mutex = kernel32.CreateMutexW(None, False, 'Local\\NowPlayingServer')
+        if kernel32.GetLastError() != 183:  # ERROR_ALREADY_EXISTS
+            break
+        kernel32.CloseHandle(mutex)
+        time.sleep(0.5)
+    else:
         _startup_note('already running, exit')
-        message('NowPlaying Server уже запущен — значок в трее рядом с часами.')
+        if not after_update:
+            message('NowPlaying Server уже запущен — значок в трее рядом с часами.')
         return
+    if getattr(sys, 'frozen', False):
+        threading.Thread(target=remove_old_exe, daemon=True).start()
 
     srv = ServerThread()
     srv.start()
@@ -329,6 +385,21 @@ def main():
         server.CLIPS.enabled = not server.CLIPS.enabled
         save_settings(clips=server.CLIPS.enabled)
 
+    def toggle_auto_update(icon, item):
+        server.UPDATER.enabled = not server.UPDATER.enabled
+        save_settings(auto_update=server.UPDATER.enabled)
+
+    def update_now(icon, item):
+        if apply_update():
+            srv.stop()
+            icon.stop()
+
+    def version_text():
+        u = server.UPDATER
+        if u.exe:
+            return f'Версия {server.VERSION}, скачана {u.latest}'
+        return f'Версия {server.VERSION}'
+
     def quit_app(icon, item):
         srv.stop()
         icon.stop()
@@ -344,6 +415,12 @@ def main():
         pystray.MenuItem('Папка фона для часов…', open_bg_folder),
         pystray.MenuItem('Открыть журнал', open_log),
         pystray.Menu.SEPARATOR,
+        pystray.MenuItem(lambda item: version_text(), None, enabled=False),
+        pystray.MenuItem(lambda item: f'Обновить до {server.UPDATER.latest}', update_now,
+                         visible=lambda item: bool(server.UPDATER.exe)),
+        pystray.MenuItem('Обновляться автоматически', toggle_auto_update,
+                         checked=lambda item: server.UPDATER.enabled),
+        pystray.Menu.SEPARATOR,
         pystray.MenuItem('Выход', quit_app),
     )
     icon = pystray.Icon('NowPlaying', Image.open(resource('icon.png')), APP_NAME, menu)
@@ -353,10 +430,21 @@ def main():
         if first_run:
             icon.notify('Сервер запущен и добавлен в автозагрузку. '
                         'Откройте «Сейчас играет» на планшете — он найдёт компьютер сам.', APP_NAME)
+        elif after_update:
+            icon.notify(f'Обновлено до версии {server.VERSION}.', APP_NAME)
         last_fw_check = time.time()
+        quiet_since = time.time()
         while srv.is_alive():
             try:
                 icon.title = f'{APP_NAME}\n{now_playing_text()}'[:127]
+                # новая версия скачана — ставим, когда музыка 2 минуты не играет
+                if server.state.get('playing'):
+                    quiet_since = time.time()
+                elif server.UPDATER.exe and server.UPDATER.enabled and time.time() - quiet_since > 120:
+                    if apply_update():
+                        srv.stop()
+                        icon.stop()
+                        return
                 if not fw['ok'] and time.time() - last_fw_check > 20:  # после окна UAC
                     fw['ok'] = firewall_ok()
                     last_fw_check = time.time()

@@ -87,6 +87,9 @@ public class MainActivity extends Activity {
     private volatile String clipId;
     private boolean clipReady, clipPlaying;
 
+    // обновление приложения: новый APK скачивает с GitHub сервер на ПК и отдаёт по сети
+    private String updateTried;   // версия, которую уже пробовали поставить (чтобы не по кругу)
+
     // экран и подсветка
     private static final long DARK_AFTER_IDLE_MS = 30 * 60 * 1000;   // 30 минут без музыки — гасим
     private static final long WAKE_ON_TAP_MS = 60 * 1000;
@@ -121,6 +124,7 @@ public class MainActivity extends Activity {
         prefs = getSharedPreferences("np", MODE_PRIVATE);
         server = prefs.getString("server", null);
         installCrashRestart();
+        new java.io.File(getFilesDir(), "update.apk").delete();   // обновление уже поставлено
         buildUi();
         setContentView(root);
     }
@@ -402,6 +406,63 @@ public class MainActivity extends Activity {
                 } catch (Exception e) {
                     android.util.Log.w("NowPlaying", "background: " + e);
                     bgId = null;  // попробуем снова при следующем опросе
+                }
+            }
+        });
+    }
+
+    private String myVersion() {
+        try {
+            return getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+        } catch (Exception e) {
+            return "0";
+        }
+    }
+
+    /** Сравнение версий вида 1.4.1: >0, если a новее b. */
+    static int compareVersions(String a, String b) {
+        String[] x = a.split("\\D+"), y = b.split("\\D+");
+        for (int i = 0; i < Math.max(x.length, y.length); i++) {
+            int p = i < x.length && x[i].length() > 0 ? Integer.parseInt(x[i]) : 0;
+            int q = i < y.length && y[i].length() > 0 ? Integer.parseInt(y[i]) : 0;
+            if (p != q) return p < q ? -1 : 1;
+        }
+        return 0;
+    }
+
+    /** Скачать новый APK с ПК и поставить: с root — тихо (и запустить снова), без root — окно установки. */
+    private void installUpdate(final String srv, final String version) {
+        pool.execute(new Runnable() {
+            public void run() {
+                try {
+                    java.io.File file = new java.io.File(getFilesDir(), "update.apk");
+                    download("http://" + srv + "/update/app.apk", file);
+                    // окну установки (другое приложение) нужен доступ к файлу
+                    file.setReadable(true, false);
+                    getFilesDir().setExecutable(true, false);
+                    android.util.Log.i("NowPlaying", "update " + version + " downloaded");
+                    boolean silent = false;
+                    try {
+                        Process p = Runtime.getRuntime().exec(new String[]{"su", "-c",
+                                "pm install -r '" + file.getPath() + "' && am start -n " + getPackageName() + "/.MainActivity"});
+                        silent = p.waitFor() == 0;   // при успехе нас перезапустят раньше, чем дойдём сюда
+                    } catch (Exception noRoot) {
+                        // root нет — покажем обычное окно установки
+                    }
+                    if (!silent) {
+                        final android.net.Uri uri = android.net.Uri.fromFile(file);
+                        ui.post(new Runnable() {
+                            public void run() {
+                                android.content.Intent i = new android.content.Intent(android.content.Intent.ACTION_VIEW);
+                                i.setDataAndType(uri, "application/vnd.android.package-archive");
+                                i.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+                                startActivity(i);
+                            }
+                        });
+                    }
+                } catch (Exception e) {
+                    android.util.Log.w("NowPlaying", "update: " + e);
+                    updateTried = null;  // попробуем при следующем опросе
                 }
             }
         });
@@ -907,6 +968,12 @@ public class MainActivity extends Activity {
                 clearClip();   // старое видео не показываем под новым треком
                 loadClip(server, nclip);
             }
+        }
+        String apk = j.isNull("apk_version") ? null : j.optString("apk_version", null);
+        if (apk != null && !apk.equals(updateTried) && !j.optBoolean("playing")
+                && compareVersions(apk, myVersion()) > 0) {
+            updateTried = apk;   // ставим, только пока музыка не играет
+            installUpdate(server, apk);
         }
         String id = j.isNull("track_id") ? null : j.optString("track_id", null);
         boolean wasPlaying = playing;

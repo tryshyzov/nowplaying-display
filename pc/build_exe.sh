@@ -7,7 +7,7 @@ SRC="$(cd "$(dirname "$0")" && pwd)"
 PY="${PYTHON:-$SRC/.venv/Scripts/python}"
 B="${BUILD_DIR:-${TMPDIR:-/tmp}/np-pyi}"
 rm -rf "$B"; mkdir -p "$B"
-cp "$SRC/server.py" "$SRC/background.py" "$SRC/clips.py" "$SRC/yandex.py" "$SRC/nowplaying_app.py" "$SRC/icon.png" "$SRC/icon.ico" "$B/"
+cp "$SRC/server.py" "$SRC/background.py" "$SRC/clips.py" "$SRC/yandex.py" "$SRC/updater.py" "$SRC/nowplaying_app.py" "$SRC/icon.png" "$SRC/icon.ico" "$B/"
 cd "$B"
 "$PY" -m PyInstaller --noconfirm --clean --onefile --windowed --name NowPlayingServer \
     --icon icon.ico --add-data "icon.png;." \

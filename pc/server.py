@@ -33,8 +33,10 @@ from winrt.windows.storage.streams import Buffer, InputStreamOptions
 
 import background
 import clips
+import updater
 import yandex
 
+VERSION = '1.5'      # версия программы для ПК (= тег релиза на GitHub)
 HTTP_PORT = int(os.environ.get('NP_HTTP_PORT', '47801'))
 UDP_PORT = int(os.environ.get('NP_UDP_PORT', '47800'))
 POLL = 0.5           # секунд между опросами панели Windows
@@ -340,6 +342,7 @@ async def h_now(request):
     s['lyrics_ready'] = s['track_id'] in lyrics
     s['bg'] = BG.info()
     s['clip'] = CLIPS.info(s['track_id'])
+    s['apk_version'] = UPDATER.apk[0] if UPDATER.apk else None  # планшет сравнит со своей
     return jsonr(s)
 
 
@@ -402,6 +405,13 @@ class Discovery(asyncio.DatagramProtocol):
 
 BG = background.Background()
 CLIPS = clips.Clips()
+UPDATER = updater.Updater(VERSION)
+
+
+async def h_apk(request):
+    if not UPDATER.apk or not os.path.exists(UPDATER.apk[1]):
+        raise web.HTTPNotFound()
+    return web.FileResponse(UPDATER.apk[1], headers={'Content-Type': 'application/vnd.android.package-archive'})
 
 
 async def h_clip(request):
@@ -425,6 +435,7 @@ async def on_startup(app):
                                         connector=aiohttp.TCPConnector(ssl=ctx))
     app['poll'] = asyncio.create_task(poll_loop(app))
     app['bg'] = asyncio.create_task(BG.watch())
+    app['update'] = asyncio.create_task(UPDATER.watch(app['http']))
     loop = asyncio.get_running_loop()
     app['udp'], _ = await loop.create_datagram_endpoint(Discovery, local_addr=('0.0.0.0', UDP_PORT))
 
@@ -432,6 +443,7 @@ async def on_startup(app):
 async def on_cleanup(app):
     app['poll'].cancel()
     app['bg'].cancel()
+    app['update'].cancel()
     app['udp'].close()
     await app['http'].close()
 
@@ -458,6 +470,7 @@ def create_app():
         web.get(r'/api/control/seek/{ms:\d{1,9}}', h_seek),
         web.get(r'/bg/{id:[0-9a-f]{12}}.{ext:jpg|mp4}', h_bg),
         web.get(r'/clip/{id:[0-9a-f]{12}}.mp4', h_clip),
+        web.get('/update/app.apk', h_apk),
         web.get('/health', lambda r: web.Response(text='ok')),
     ])
     app.on_startup.append(on_startup)
