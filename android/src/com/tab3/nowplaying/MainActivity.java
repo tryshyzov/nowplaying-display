@@ -363,6 +363,7 @@ public class MainActivity extends Activity {
         idle.setVisibility(on ? View.VISIBLE : View.GONE);
         player.setVisibility(on ? View.GONE : View.VISIBLE);
         bgLayer.setVisibility(on && bgReady ? View.VISIBLE : View.GONE);
+        bgVideo.setVisibility(on && bgReady && "video".equals(bgType) ? View.VISIBLE : View.GONE);
     }
 
     /** Видео фона играет только на экране часов и пока экран не «спит». */
@@ -484,12 +485,14 @@ public class MainActivity extends Activity {
         clipPlaying = false;
         clipVideo.stopPlayback();
         clipLayer.setVisibility(View.GONE);
+        clipVideo.setVisibility(View.GONE);
     }
 
     /** Видео трека играет только на экране трека и пока экран не «спит». */
     private void syncClip(boolean shouldPlay) {
         shouldPlay &= clipReady;
         clipLayer.setVisibility(shouldPlay ? View.VISIBLE : View.GONE);
+        clipVideo.setVisibility(shouldPlay ? View.VISIBLE : View.GONE);
         if (shouldPlay && !clipPlaying) { clipVideo.start(); clipPlaying = true; }
         else if (!shouldPlay && clipPlaying) { clipVideo.pause(); clipPlaying = false; }
     }
@@ -515,7 +518,7 @@ public class MainActivity extends Activity {
             bgReady = bmp != null;
         } else {
             bgImage.setImageDrawable(null);
-            bgVideo.setVisibility(View.VISIBLE);
+            bgVideo.setVisibility(idle.getVisibility() == View.VISIBLE ? View.VISIBLE : View.GONE);
             bgVideo.setOnPreparedListener(new android.media.MediaPlayer.OnPreparedListener() {
                 public void onPrepared(android.media.MediaPlayer mp) {
                     mp.setLooping(true);
