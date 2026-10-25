@@ -1,7 +1,8 @@
 """NowPlaying Server для Windows: сервер в фоне + значок в трее.
 
 При первом запуске:
-  * добавляет себя в автозагрузку (HKCU\\...\\Run, без прав администратора);
+  * добавляет себя в автозапуск через Планировщик заданий (при входе в систему, без прав
+    администратора; если задание создать нельзя — запасной вариант HKCU\\...\\Run);
   * если нет правил брандмауэра, просит разрешение (окно UAC) открыть
     TCP 47801 и UDP 47800 — только для локальной сети.
 В меню значка: что играет, адрес сервера, автозапуск, журнал, выход.
@@ -70,29 +71,49 @@ def resource(name):
 
 # ---------- автозапуск ----------
 
-def launch_command():
-    if getattr(sys, 'frozen', False):
-        return f'"{sys.executable}"'
-    pythonw = os.path.join(os.path.dirname(sys.executable), 'pythonw.exe')
-    return f'"{pythonw}" "{os.path.abspath(__file__)}"'
-
-
-# Автозапуск — через Планировщик заданий («при входе в систему», с задержкой 30 с и перезапуском
-# при сбое). Раньше был раздел реестра Run, но Windows иногда молча пропускает такие записи.
+# Автозапуск — через Планировщик заданий («при входе в систему», перезапуск при сбое).
+# Раньше был раздел реестра Run, но Windows иногда молча пропускает такие записи; Run остаётся
+# только запасным вариантом, если задание создать не удалось.
 TASK_NAME = APP_NAME
+RUN_FALLBACK_FLAG = os.path.join(DATA_DIR, 'autostart-run-fallback')  # задание не создаётся — не пытаться каждый запуск
 _autostart_cache = {}
 
 
 def _launch_parts():
+    """(программа, аргументы) — единый источник и для задания, и для записи Run."""
     if getattr(sys, 'frozen', False):
         return sys.executable, ''
     pythonw = os.path.join(os.path.dirname(sys.executable), 'pythonw.exe')
     return pythonw, f'"{os.path.abspath(__file__)}"'
 
 
-def _ps(script, timeout=60):
-    return subprocess.run(['powershell', '-NoProfile', '-NonInteractive', '-Command', script],
-                          capture_output=True, text=True, timeout=timeout, creationflags=NO_WINDOW)
+def launch_command():
+    exe, args = _launch_parts()
+    return f'"{exe}" {args}'.strip()
+
+
+def _q(text):
+    """Строка в одинарных кавычках PowerShell (апостроф удваивается)."""
+    return "'" + text.replace("'", "''") + "'"
+
+
+def _ps(script, timeout=120):
+    """PowerShell без окна; None, если не запустился или завис."""
+    try:
+        return subprocess.run(['powershell', '-NoProfile', '-NonInteractive', '-Command', script],
+                              capture_output=True, text=True, timeout=timeout, creationflags=NO_WINDOW)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        logging.getLogger('nowplaying').warning('powershell failed: %s', e)
+        return None
+
+
+def _run_key_present():
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as k:
+            winreg.QueryValueEx(k, APP_NAME)
+            return True
+    except OSError:
+        return False
 
 
 def _remove_run_key():
@@ -104,36 +125,53 @@ def _remove_run_key():
         return False
 
 
+def _task_enabled():
+    """Есть ли включённое задание. XML не зависит от языка Windows (в отличие от колонки «Состояние»)."""
+    try:
+        r = subprocess.run(['schtasks', '/query', '/tn', TASK_NAME, '/xml'],
+                           capture_output=True, text=True, timeout=20, creationflags=NO_WINDOW)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return r.returncode == 0 and '<Enabled>false</Enabled>' not in r.stdout
+
+
 def autostart_enabled(refresh=False):
     if refresh or 'on' not in _autostart_cache:
-        r = subprocess.run(['schtasks', '/query', '/tn', TASK_NAME, '/fo', 'csv', '/nh'],
-                           capture_output=True, text=True, creationflags=NO_WINDOW)
-        _autostart_cache['on'] = r.returncode == 0 and 'Disabled' not in r.stdout and 'Отключено' not in r.stdout
+        _autostart_cache['on'] = _task_enabled() or _run_key_present()
     return _autostart_cache['on']
 
 
 def set_autostart(on):
     if on:
         exe, args = _launch_parts()
-        arg = f"-Argument '{args}'" if args else ''
+        arg = f'-Argument {_q(args)}' if args else ''
         script = (
-            f"$a = New-ScheduledTaskAction -Execute '{exe}' {arg}; "
+            f"$a = New-ScheduledTaskAction -Execute {_q(exe)} {arg}; "
             "$u = \"$env:USERDOMAIN\\$env:USERNAME\"; "
-            "$t = New-ScheduledTaskTrigger -AtLogOn -User $u; $t.Delay = 'PT30S'; "
+            "$t = New-ScheduledTaskTrigger -AtLogOn -User $u; "   # задержку делает сама программа (см. __main__)
             "$s = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries "
             "-ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) "
             "-MultipleInstances IgnoreNew; "
             "$p = New-ScheduledTaskPrincipal -UserId $u -LogonType Interactive -RunLevel Limited; "
-            f"Register-ScheduledTask -TaskName '{TASK_NAME}' -Action $a -Trigger $t -Settings $s -Principal $p -Force | Out-Null")
+            f"Register-ScheduledTask -TaskName {_q(TASK_NAME)} -Action $a -Trigger $t -Settings $s -Principal $p -Force | Out-Null")
         r = _ps(script)
-        if r.returncode != 0:
-            logging.getLogger('nowplaying').warning('scheduled task failed, using Run key: %s', r.stderr[-300:])
-            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as k:
-                winreg.SetValueEx(k, APP_NAME, 0, winreg.REG_SZ, launch_command())
+        if r is None or r.returncode != 0:
+            logging.getLogger('nowplaying').warning('scheduled task failed, using Run key: %s',
+                                                    r.stderr[-300:] if r else 'no powershell')
+            try:
+                with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as k:
+                    winreg.SetValueEx(k, APP_NAME, 0, winreg.REG_SZ, launch_command())
+                open(RUN_FALLBACK_FLAG, 'w').close()
+            except OSError as e:
+                logging.getLogger('nowplaying').warning('Run key failed too: %s', e)
         else:
             _remove_run_key()
+            try:
+                os.remove(RUN_FALLBACK_FLAG)
+            except OSError:
+                pass
     else:
-        _ps(f"Unregister-ScheduledTask -TaskName '{TASK_NAME}' -Confirm:$false -ErrorAction SilentlyContinue")
+        _ps(f"Unregister-ScheduledTask -TaskName {_q(TASK_NAME)} -Confirm:$false -ErrorAction SilentlyContinue")
         _remove_run_key()
     autostart_enabled(refresh=True)
 
@@ -240,11 +278,11 @@ def main():
     if first_run:
         set_autostart(True)
         open(FIRST_RUN_FLAG, 'w').close()
-    elif _remove_run_key():
+    elif _run_key_present() and not os.path.exists(RUN_FALLBACK_FLAG) and not _task_enabled():
         # переезд со старой версии: автозапуск был в реестре Run — переносим в Планировщик заданий
+        # (Run удаляется только если задание создалось; если не создалось — больше не пытаемся)
         _startup_note('migrating autostart from Run key to Task Scheduler')
         set_autostart(True)
-    autostart_enabled(refresh=True)
     fw = {'ok': firewall_ok()}
     if first_run and not fw['ok']:
         add_firewall_rules()
