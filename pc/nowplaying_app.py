@@ -7,6 +7,7 @@
     TCP 47801 и UDP 47800 — только для локальной сети.
 В меню значка: что играет, адрес сервера, автозапуск, журнал, выход.
 """
+import json
 import os
 import sys
 import time
@@ -248,9 +249,33 @@ def now_playing_text():
     return ('▶ ' if st.get('playing') else '❚❚ ') + text[:90]
 
 
+# ---------- настройки (settings.json в DATA_DIR) ----------
+
+SETTINGS_FILE = os.path.join(DATA_DIR, 'settings.json')
+
+
+def load_settings():
+    try:
+        with open(SETTINGS_FILE, encoding='utf-8') as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def save_settings(**changes):
+    data = load_settings()
+    data.update(changes)
+    try:
+        with open(SETTINGS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False)
+    except OSError:
+        pass
+
+
 def main():
     os.makedirs(DATA_DIR, exist_ok=True)
     log_path = server.setup_logging(DATA_DIR)
+    server.CLIPS.enabled = load_settings().get('clips', True)
     # любые необработанные ошибки — в журнал, иначе без консоли программа «молча» пропадает
     import logging
     log = logging.getLogger('nowplaying')
@@ -300,6 +325,10 @@ def main():
     def open_bg_folder(icon, item):
         os.startfile(server.BG.src_dir)
 
+    def toggle_clips(icon, item):
+        server.CLIPS.enabled = not server.CLIPS.enabled
+        save_settings(clips=server.CLIPS.enabled)
+
     def quit_app(icon, item):
         srv.stop()
         icon.stop()
@@ -310,6 +339,8 @@ def main():
         pystray.Menu.SEPARATOR,
         pystray.MenuItem('Запускать вместе с Windows', toggle_autostart, checked=lambda item: autostart_enabled()),
         pystray.MenuItem('Разрешить в брандмауэре…', fix_firewall, visible=lambda item: not fw['ok']),
+        pystray.MenuItem('Видео за треком (из Яндекс Музыки)', toggle_clips,
+                         checked=lambda item: server.CLIPS.enabled),
         pystray.MenuItem('Папка фона для часов…', open_bg_folder),
         pystray.MenuItem('Открыть журнал', open_log),
         pystray.Menu.SEPARATOR,

@@ -81,6 +81,12 @@ public class MainActivity extends Activity {
     private String bgType;
     private boolean bgReady, bgPlaying;
 
+    // видео за экраном трека: видеошот из Яндекс Музыки (готовит сервер на ПК)
+    private FrameLayout clipLayer;
+    private android.widget.VideoView clipVideo;
+    private volatile String clipId;
+    private boolean clipReady, clipPlaying;
+
     // экран и подсветка
     private static final long DARK_AFTER_IDLE_MS = 30 * 60 * 1000;   // 30 минут без музыки — гасим
     private static final long WAKE_ON_TAP_MS = 60 * 1000;
@@ -135,6 +141,7 @@ public class MainActivity extends Activity {
         super.onPause();
         running = false;
         syncBgVideo(false);
+        syncClip(false);
         ui.removeCallbacks(ticker);
         ui.removeCallbacks(clockTick);
     }
@@ -291,6 +298,16 @@ public class MainActivity extends Activity {
         times.addView(timeRight, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
         right.addView(times);
 
+        // --- видео за экраном трека (под ним) ---
+        clipLayer = new FrameLayout(this);
+        clipVideo = new android.widget.VideoView(this);
+        clipLayer.addView(clipVideo, new FrameLayout.LayoutParams(-1, -1, Gravity.CENTER));
+        View clipDim = new View(this);
+        clipDim.setBackgroundColor(0x8c000000);   // ~55% затемнение, чтобы текст читался
+        clipLayer.addView(clipDim, new FrameLayout.LayoutParams(-1, -1));
+        clipLayer.setVisibility(View.GONE);
+        root.addView(clipLayer, new FrameLayout.LayoutParams(-1, -1));
+
         root.addView(player, new FrameLayout.LayoutParams(-1, -1));
 
         // --- фон для часов (под ними) ---
@@ -371,21 +388,7 @@ public class MainActivity extends Activity {
                 try {
                     final java.io.File dir = getCacheDir();
                     final java.io.File file = new java.io.File(dir, "bg_" + id + "." + ext);
-                    if (!file.exists()) {
-                        java.io.File part = new java.io.File(dir, "bg_" + id + ".part");
-                        HttpURLConnection c = (HttpURLConnection) new URL("http://" + srv + "/bg/" + id + "." + ext).openConnection();
-                        c.setConnectTimeout(5000);
-                        c.setReadTimeout(30000);
-                        InputStream in = c.getInputStream();
-                        java.io.FileOutputStream out = new java.io.FileOutputStream(part);
-                        byte[] buf = new byte[65536];
-                        int n;
-                        while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
-                        out.close();
-                        in.close();
-                        c.disconnect();
-                        if (!part.renameTo(file)) throw new java.io.IOException("rename");
-                    }
+                    if (!file.exists()) download("http://" + srv + "/bg/" + id + "." + ext, file);
                     for (java.io.File f : dir.listFiles()) {   // старые фоны больше не нужны
                         if (f.getName().startsWith("bg_") && !f.equals(file)) f.delete();
                     }
@@ -401,6 +404,88 @@ public class MainActivity extends Activity {
                 }
             }
         });
+    }
+
+    private static void download(String url, java.io.File file) throws java.io.IOException {
+        java.io.File part = new java.io.File(file.getPath() + ".part");
+        HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
+        c.setConnectTimeout(5000);
+        c.setReadTimeout(30000);
+        try {
+            InputStream in = c.getInputStream();
+            java.io.FileOutputStream out = new java.io.FileOutputStream(part);
+            byte[] buf = new byte[65536];
+            int n;
+            while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+            out.close();
+            in.close();
+        } finally {
+            c.disconnect();
+        }
+        if (!part.renameTo(file)) throw new java.io.IOException("rename");
+    }
+
+    /** Видео на весь экран с обрезкой краёв (как centerCrop у картинки). */
+    private void fillScreen(android.widget.VideoView v, android.media.MediaPlayer mp) {
+        int vw = mp.getVideoWidth(), vh = mp.getVideoHeight();
+        int w = root.getWidth(), h = root.getHeight();
+        if (vw > 0 && vh > 0 && w > 0 && h > 0) {
+            float k = Math.max((float) w / vw, (float) h / vh);
+            v.setLayoutParams(new FrameLayout.LayoutParams((int) (vw * k), (int) (vh * k), Gravity.CENTER));
+        }
+    }
+
+    private void loadClip(final String srv, final String id) {
+        pool.execute(new Runnable() {
+            public void run() {
+                try {
+                    java.io.File dir = getCacheDir();
+                    final java.io.File file = new java.io.File(dir, "clip_" + id + ".mp4");
+                    if (!file.exists()) download("http://" + srv + "/clip/" + id + ".mp4", file);
+                    for (java.io.File f : dir.listFiles()) {   // храним только текущий
+                        if (f.getName().startsWith("clip_") && !f.equals(file)) f.delete();
+                    }
+                    ui.post(new Runnable() {
+                        public void run() {
+                            if (id.equals(clipId)) showClip(file);
+                        }
+                    });
+                } catch (Exception e) {
+                    android.util.Log.w("NowPlaying", "clip: " + e);
+                    clipId = null;  // попробуем снова при следующем опросе
+                }
+            }
+        });
+    }
+
+    private void showClip(java.io.File file) {
+        clipVideo.stopPlayback();
+        clipPlaying = false;
+        clipVideo.setOnPreparedListener(new android.media.MediaPlayer.OnPreparedListener() {
+            public void onPrepared(android.media.MediaPlayer mp) {
+                mp.setLooping(true);
+                mp.setVolume(0f, 0f);
+                fillScreen(clipVideo, mp);
+                if (!clipPlaying) mp.pause();
+            }
+        });
+        clipVideo.setVideoPath(file.getPath());
+        clipReady = true;
+    }
+
+    private void clearClip() {
+        clipReady = false;
+        clipPlaying = false;
+        clipVideo.stopPlayback();
+        clipLayer.setVisibility(View.GONE);
+    }
+
+    /** Видео трека играет только на экране трека и пока экран не «спит». */
+    private void syncClip(boolean shouldPlay) {
+        shouldPlay &= clipReady;
+        clipLayer.setVisibility(shouldPlay ? View.VISIBLE : View.GONE);
+        if (shouldPlay && !clipPlaying) { clipVideo.start(); clipPlaying = true; }
+        else if (!shouldPlay && clipPlaying) { clipVideo.pause(); clipPlaying = false; }
     }
 
     private Bitmap decodeForScreen(java.io.File f) {
@@ -429,13 +514,7 @@ public class MainActivity extends Activity {
                 public void onPrepared(android.media.MediaPlayer mp) {
                     mp.setLooping(true);
                     mp.setVolume(0f, 0f);
-                    // на весь экран с обрезкой краёв (как centerCrop у картинки)
-                    int vw = mp.getVideoWidth(), vh = mp.getVideoHeight();
-                    int w = root.getWidth(), h = root.getHeight();
-                    if (vw > 0 && vh > 0 && w > 0 && h > 0) {
-                        float k = Math.max((float) w / vw, (float) h / vh);
-                        bgVideo.setLayoutParams(new FrameLayout.LayoutParams((int) (vw * k), (int) (vh * k), Gravity.CENTER));
-                    }
+                    fillScreen(bgVideo, mp);
                     if (!bgPlaying) mp.pause();
                 }
             });
@@ -533,6 +612,7 @@ public class MainActivity extends Activity {
         boolean darkNow = idleNow && t - idleSince > DARK_AFTER_IDLE_MS && t > wakeUntil;
         dark.setVisibility(darkNow ? View.VISIBLE : View.GONE);
         syncBgVideo(idleNow && !darkNow);
+        syncClip(!idleNow && !darkNow);
         float b;
         if (darkNow) b = 0.0f;
         else if (idleNow) b = night ? 0.02f : (bgReady ? 0.35f : 0.15f);  // с фоном днём ярче, иначе его не видно
@@ -799,6 +879,15 @@ public class MainActivity extends Activity {
             bgId = nbg;
             if (nbg == null) clearBg();
             else loadBg(server, nbg, bg.optString("ext", "jpg"), bg.optString("type", "image"));
+        }
+        String nclip = j.isNull("clip") ? null : j.optString("clip", null);
+        if (nclip == null ? clipId != null : !nclip.equals(clipId)) {
+            clipId = nclip;
+            if (nclip == null) clearClip();
+            else {
+                clearClip();   // старое видео не показываем под новым треком
+                loadClip(server, nclip);
+            }
         }
         String id = j.isNull("track_id") ? null : j.optString("track_id", null);
         boolean wasPlaying = playing;

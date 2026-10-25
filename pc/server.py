@@ -32,6 +32,7 @@ from winrt.windows.media.control import (
 from winrt.windows.storage.streams import Buffer, InputStreamOptions
 
 import background
+import clips
 
 HTTP_PORT = int(os.environ.get('NP_HTTP_PORT', '47801'))
 UDP_PORT = int(os.environ.get('NP_UDP_PORT', '47800'))
@@ -259,6 +260,8 @@ async def update_state(app, mgr):
     # текст ищем, когда известны и название, и (по возможности) длительность
     if tid and tid not in lyrics and tid not in lyrics_jobs and (dur > 0 or tid == state['track_id']):
         lyrics_jobs[tid] = asyncio.create_task(fetch_lyrics(app, tid, title, artist, props.album_title or '', dur))
+    if tid and dur > 0:
+        CLIPS.request(app['http'], tid, title, artist, dur)
 
     state.update(track_id=tid, playing=playing, title=title, artist=artist, album=props.album_title or '',
                  app=app_id, position_ms=int(pos), duration_ms=int(dur), measured_at=now_ms())
@@ -326,6 +329,7 @@ async def h_now(request):
     s['has_art'] = s['track_id'] in art
     s['lyrics_ready'] = s['track_id'] in lyrics
     s['bg'] = BG.info()
+    s['clip'] = CLIPS.info(s['track_id'])
     return jsonr(s)
 
 
@@ -387,6 +391,14 @@ class Discovery(asyncio.DatagramProtocol):
 
 
 BG = background.Background()
+CLIPS = clips.Clips()
+
+
+async def h_clip(request):
+    path = CLIPS.ready.get(request.match_info['id'])
+    if not path or not os.path.exists(path):
+        raise web.HTTPNotFound()
+    return web.FileResponse(path, headers={'Cache-Control': 'max-age=86400'})
 
 
 async def h_bg(request):
@@ -434,6 +446,7 @@ def create_app():
         web.get(r'/api/control/{action:toggle|next|prev}', h_control),
         web.get(r'/api/control/seek/{ms:\d{1,9}}', h_seek),
         web.get(r'/bg/{id:[0-9a-f]{12}}.{ext:jpg|mp4}', h_bg),
+        web.get(r'/clip/{id:[0-9a-f]{12}}.mp4', h_clip),
         web.get('/health', lambda r: web.Response(text='ok')),
     ])
     app.on_startup.append(on_startup)
