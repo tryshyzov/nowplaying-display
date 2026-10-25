@@ -10,6 +10,7 @@ import logging
 import os
 import re
 import subprocess
+import time
 
 import aiohttp
 
@@ -33,7 +34,10 @@ class Clips:
         self.cache_dir = cache_dir or os.path.join(local, 'NowPlaying', 'clips')
         self.enabled = True
         self.ready = {}     # track_id -> путь к готовому mp4
-        self.missing = set()  # у этих треков видео нет — не искать снова
+        # у этих треков видео не нашлось: track_id -> (длительность, когда искали).
+        # При смене трека Windows иногда отдаёт длительность прошлой песни, поэтому
+        # с другой длительностью ищем снова, а отказ забываем через час
+        self.missing = {}
         self.jobs = {}
         os.makedirs(self.cache_dir, exist_ok=True)
         for name in os.listdir(self.cache_dir):
@@ -50,7 +54,10 @@ class Clips:
 
     def request(self, http, tid, title, artist, dur_ms):
         """Запустить поиск видео для трека (один раз на трек)."""
-        if not self.enabled or not tid or not title or tid in self.ready or tid in self.missing or tid in self.jobs:
+        if not self.enabled or not tid or not title or tid in self.ready or tid in self.jobs:
+            return
+        miss = self.missing.get(tid)
+        if miss and miss[0] == dur_ms and time.time() - miss[1] < 3600:
             return
         self.jobs[tid] = asyncio.create_task(self._job(http, tid, title, artist, dur_ms))
 
@@ -59,7 +66,7 @@ class Clips:
             url = await self.find(http, title, artist, dur_ms)
             if not url:
                 log.info('clip for %s — %s: none', artist, title)
-                self.missing.add(tid)
+                self.missing[tid] = (dur_ms, time.time())
                 return
             path = await self.fetch(http, tid, url)
             if path:
@@ -67,7 +74,7 @@ class Clips:
                 self.cleanup()
                 log.info('clip for %s — %s: ready', artist, title)
             else:
-                self.missing.add(tid)
+                self.missing[tid] = (dur_ms, time.time())
         except Exception as e:
             log.warning('clip: %s', e)  # сеть: в следующий раз попробуем снова
         finally:
@@ -122,7 +129,7 @@ class Clips:
         tmp = os.path.join(self.cache_dir, f'{tid}.part.mp4')
         # фон: кадр 16:9 по центру, маленький и размытый — планшет растянет на весь экран
         vf = ('scale=512:288:force_original_aspect_ratio=increase,crop=512:288,'
-              'gblur=sigma=3,fps=30,format=yuv420p')
+              'gblur=sigma=3,setsar=1,fps=30,format=yuv420p')
         cmd = [ffmpeg_exe(), '-y', '-v', 'error', '-i', src, '-t', '30', '-an', '-vf', vf,
                '-c:v', 'libx264', '-profile:v', 'baseline', '-level', '3.1', '-preset', 'veryfast',
                '-crf', '24', '-movflags', '+faststart', tmp]

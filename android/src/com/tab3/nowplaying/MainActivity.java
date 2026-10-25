@@ -466,7 +466,13 @@ public class MainActivity extends Activity {
                 mp.setLooping(true);
                 mp.setVolume(0f, 0f);
                 fillScreen(clipVideo, mp);
-                if (!clipPlaying) mp.pause();
+            }
+        });
+        clipVideo.setOnErrorListener(new android.media.MediaPlayer.OnErrorListener() {
+            public boolean onError(android.media.MediaPlayer mp, int what, int extra) {
+                android.util.Log.w("NowPlaying", "clip video error " + what + "/" + extra);
+                clearClip();   // без системного окна: просто остаётся фон под цвет обложки
+                return true;
             }
         });
         clipVideo.setVideoPath(file.getPath());
@@ -515,7 +521,13 @@ public class MainActivity extends Activity {
                     mp.setLooping(true);
                     mp.setVolume(0f, 0f);
                     fillScreen(bgVideo, mp);
-                    if (!bgPlaying) mp.pause();
+                }
+            });
+            bgVideo.setOnErrorListener(new android.media.MediaPlayer.OnErrorListener() {
+                public boolean onError(android.media.MediaPlayer mp, int what, int extra) {
+                    android.util.Log.w("NowPlaying", "background video error " + what + "/" + extra);
+                    clearBg();
+                    return true;
                 }
             });
             bgVideo.setVideoPath(file.getPath());
