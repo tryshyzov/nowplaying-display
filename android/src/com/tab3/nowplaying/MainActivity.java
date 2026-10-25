@@ -898,8 +898,12 @@ public class MainActivity extends Activity {
         String nclip = j.isNull("clip") ? null : j.optString("clip", null);
         if (nclip == null ? clipId != null : !nclip.equals(clipId)) {
             clipId = nclip;
-            if (nclip == null) clearClip();
-            else {
+            if (nclip == null) {
+                clearClip();
+                for (java.io.File f : getCacheDir().listFiles()) {   // видео больше не нужно
+                    if (f.getName().startsWith("clip_")) f.delete();
+                }
+            } else {
                 clearClip();   // старое видео не показываем под новым треком
                 loadClip(server, nclip);
             }

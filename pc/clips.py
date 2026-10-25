@@ -4,8 +4,8 @@
 трека (backgroundVideoUri, короткая нарезка из клипа), а если его нет, но есть клип, то
 10-секундное превью клипа (тоже нарезка; весь клип без аккаунта не отдают). Видео
 перекодируется под Android 4.2: без чёрных полос, кадр 16:9 по центру, размытие,
-без звука, H.264 baseline. Готовые файлы лежат в %LOCALAPPDATA%\\NowPlaying\\clips
-(последние 20).
+без звука, H.264 baseline. Готовые файлы лежат в %LOCALAPPDATA%\\NowPlaying\\clips:
+не больше 20, а видео, которое 12 часов не показывалось, удаляется.
 """
 import asyncio
 import logging
@@ -21,7 +21,8 @@ from background import NO_WINDOW, ffmpeg_exe
 log = logging.getLogger('nowplaying')
 
 YM_API = 'https://api.music.yandex.net'
-KEEP = 20
+KEEP = 20                  # не больше стольких видео
+MAX_AGE = 12 * 3600        # видео, которое столько не показывалось, удаляется
 
 
 def norm(s):
@@ -41,6 +42,7 @@ class Clips:
         # с другой длительностью ищем снова, а отказ забываем через час
         self.missing = {}
         self.jobs = {}
+        self.cleaned_at = 0
         os.makedirs(self.cache_dir, exist_ok=True)
         for name in os.listdir(self.cache_dir):
             if re.fullmatch(r'[0-9a-f]{12}\.mp4', name):
@@ -54,8 +56,17 @@ class Clips:
     def info(self, tid):
         return tid if self.enabled and tid in self.ready else None
 
+    def touch(self, tid):
+        """Видео показали — продлеваем ему жизнь (время изменения файла = последний показ)."""
+        try:
+            os.utime(self.ready[tid])
+        except (KeyError, OSError):
+            pass
+
     def request(self, http, tid, title, artist, dur_ms):
         """Запустить поиск видео для трека (один раз на трек)."""
+        if time.time() - self.cleaned_at > 3600:   # заодно раз в час убираем старое
+            self.cleanup()
         if not self.enabled or not tid or not title or tid in self.ready or tid in self.jobs:
             return
         miss = self.missing.get(tid)
@@ -186,11 +197,18 @@ class Clips:
         return out
 
     def cleanup(self):
-        if len(self.ready) <= KEEP:
-            return
-        old = sorted(self.ready, key=lambda t: os.path.getmtime(self.ready[t]))[:len(self.ready) - KEEP]
-        for t in old:
-            try:
-                os.remove(self.ready.pop(t))
-            except OSError:
-                pass
+        self.cleaned_at = time.time()
+        by_age = sorted(self.ready, key=self._mtime)
+        extra = max(0, len(by_age) - KEEP)
+        for i, t in enumerate(by_age):
+            if i < extra or time.time() - self._mtime(t) > MAX_AGE:
+                try:
+                    os.remove(self.ready.pop(t))
+                except OSError:
+                    pass
+
+    def _mtime(self, tid):
+        try:
+            return os.path.getmtime(self.ready[tid])
+        except OSError:
+            return 0

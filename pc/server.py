@@ -398,6 +398,7 @@ async def h_clip(request):
     path = CLIPS.ready.get(request.match_info['id'])
     if not path or not os.path.exists(path):
         raise web.HTTPNotFound()
+    CLIPS.touch(request.match_info['id'])
     return web.FileResponse(path, headers={'Cache-Control': 'max-age=86400'})
 
 
