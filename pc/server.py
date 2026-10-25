@@ -49,6 +49,7 @@ lyrics = {}    # track_id -> dict
 lyrics_jobs = {}
 art_attempts = {}
 current = {}  # выбранная сессия Windows (для кнопок управления)
+seek_hold = {}  # после перемотки Windows ещё пару секунд отдаёт старую позицию — держим новую
 itunes_jobs = {}
 itunes_cache = {}  # 'артист|название' -> url обложки или None
 
@@ -233,6 +234,8 @@ async def update_state(app, mgr):
     upd = tl.last_updated_time.timestamp() * 1000 if tl.last_updated_time else now_ms()
     if playing and 0 < upd <= now_ms():
         pos += now_ms() - upd  # Windows обновляет позицию редко — досчитываем
+    if seek_hold.get('tid') == tid and now_ms() < seek_hold['until']:
+        pos = seek_hold['pos'] + (now_ms() - seek_hold['at'] if playing else 0)
     if dur:
         pos = min(pos, dur)
 
@@ -326,7 +329,7 @@ async def h_now(request):
     return jsonr(s)
 
 
-async def h_control(request):
+def control_session():
     s = current.get('session')
     if s is None and current.get('mgr') is not None:
         # на паузе плеер может ненадолго «спрятать» трек — берём текущую или любую сессию Windows
@@ -334,6 +337,22 @@ async def h_control(request):
         s = mgr.get_current_session() or next(iter(mgr.get_sessions()), None)
     if s is None:
         raise web.HTTPNotFound()
+    return s
+
+
+async def h_seek(request):
+    s = control_session()
+    ms = int(request.match_info['ms'])
+    ok = await s.try_change_playback_position_async(ms * 10000)  # в «тиках» по 100 нс
+    if ok:
+        t = now_ms()
+        seek_hold.update(tid=state['track_id'], pos=ms, at=t, until=t + 3000)
+        state.update(position_ms=ms, measured_at=t)
+    return jsonr({'ok': bool(ok)})
+
+
+async def h_control(request):
+    s = control_session()
     action = request.match_info['action']
     ok = await {'toggle': s.try_toggle_play_pause_async, 'next': s.try_skip_next_async,
                 'prev': s.try_skip_previous_async}[action]()
@@ -413,6 +432,7 @@ def create_app():
         web.get(r'/art/{id:[0-9a-f]{12}}.jpg', h_art),
         web.get(r'/api/lyrics/{id:[0-9a-f]{12}}', h_lyrics),
         web.get(r'/api/control/{action:toggle|next|prev}', h_control),
+        web.get(r'/api/control/seek/{ms:\d{1,9}}', h_seek),
         web.get(r'/bg/{id:[0-9a-f]{12}}.{ext:jpg|mp4}', h_bg),
         web.get('/health', lambda r: web.Response(text='ok')),
     ])

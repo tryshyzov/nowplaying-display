@@ -79,6 +79,9 @@ Open the «Сейчас играет» ("Now Playing") app. It **finds the PC on
 | Swipe left | next track |
 | Swipe right | previous track |
 | Long press | enter the PC address manually |
+| Drag up/down on the lyrics | scroll the lyrics; after 3 s they return to the current line |
+| Tap a line while the lyrics are scrolled | jump to that line (synced lyrics only) |
+| Drag or tap the progress bar | seek |
 
 Other things the app does:
 
@@ -142,6 +145,7 @@ The server (`pc/server.py`) is written in Python with aiohttp, winrt and Pillow.
 | `GET /art/<id>.jpg` | 480 px cover |
 | `GET /api/lyrics/<id>` | synced lyrics `[{t, text}]` or plain lyrics |
 | `GET /api/control/{toggle,next,prev}` | controls the current Windows player |
+| `GET /api/control/seek/<ms>` | seeks the current track to that position |
 
 The app (`android/`) is written in Java: minSdk 16, targetSdk 17, no third-party libraries. The font is [Inter 4.1](https://github.com/rsms/inter) (SIL Open Font License, `android/assets/fonts/LICENSE-Inter.txt`): Inter Display Bold for the title and lyrics, Inter Display SemiBold for the clock, Inter Medium for everything else. The files are subset to Latin and Cyrillic. It looks similar to SF Pro from Apple Music, whose license doesn't allow embedding it in Android apps.
 

@@ -4,6 +4,7 @@ import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Typeface;
+import android.os.SystemClock;
 import android.text.Layout;
 import android.text.StaticLayout;
 import android.text.TextPaint;
@@ -13,7 +14,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 /** Синхронный текст: текущая строка яркая и на 40% высоты, остальные приглушены,
- *  прокрутка плавная, края мягко затухают. Рисуется видеокартой, без отдельных слоёв. */
+ *  прокрутка плавная, края мягко затухают. Рисуется видеокартой, без отдельных слоёв.
+ *  Текст можно листать пальцем (жесты ловит MainActivity); через 3 с без касаний
+ *  он сам возвращается к текущей строке. */
 public class LyricsView extends View {
     private final List<Long> times = new ArrayList<Long>();
     private final List<String> texts = new ArrayList<String>();
@@ -27,6 +30,9 @@ public class LyricsView extends View {
     private int builtWidth = -1;
     private float plainProgress;
     private long lastFrame;
+    private static final long BROWSE_MS = 3000;
+    private long browseUntil;   // до этого момента текст листает пользователь
+    private float flingVelocity; // px/мс, затухает
 
     public LyricsView(Context c) {
         super(c);
@@ -54,12 +60,71 @@ public class LyricsView extends View {
         synced = isSynced;
         current = -1;
         builtWidth = -1;
+        browseUntil = 0;
+        flingVelocity = 0;
         offset = Float.NaN; // первый кадр — сразу на место, без пролистывания
         invalidate();
     }
 
     public boolean hasLyrics() {
         return !texts.isEmpty();
+    }
+
+    public boolean isSynced() {
+        return synced;
+    }
+
+    /** Листает ли пользователь текст прямо сейчас (тогда тап по строке — перемотка). */
+    public boolean isBrowsing() {
+        return SystemClock.uptimeMillis() < browseUntil;
+    }
+
+    /** Сдвиг пальцем на dy пикселей (вверх — положительный). */
+    public void scrollByUser(float dy) {
+        if (texts.isEmpty() || Float.isNaN(offset)) return;
+        flingVelocity = 0;
+        offset = clampOffset(offset + dy);
+        browseUntil = SystemClock.uptimeMillis() + BROWSE_MS;
+        lastFrame = 0;
+        invalidate();
+    }
+
+    /** Бросок пальцем; vy — скорость пальца в px/с, как у GestureDetector. */
+    public void flingByUser(float vy) {
+        if (texts.isEmpty() || Float.isNaN(offset)) return;
+        flingVelocity = -vy / 1000f;
+        browseUntil = SystemClock.uptimeMillis() + BROWSE_MS;
+        lastFrame = 0;
+        invalidate();
+    }
+
+    /** Палец коснулся экрана — останавливаем бросок. */
+    public void stopFling() {
+        flingVelocity = 0;
+    }
+
+    /** Конец листания: плавно вернуться к текущей строке. */
+    public void endBrowsing() {
+        browseUntil = 0;
+        flingVelocity = 0;
+        invalidate();
+    }
+
+    /** Время начала строки под точкой y (в координатах вида), или -1. */
+    public long timeAt(float y) {
+        if (!synced || layouts.isEmpty() || Float.isNaN(offset)) return -1;
+        float gap = sp(14);
+        for (int i = 0; i < layouts.size() && i < times.size(); i++) {
+            float top = tops[i] - offset;
+            if (y >= top - gap / 2 && y < top + layouts.get(i).getHeight() + gap / 2) return times.get(i);
+        }
+        return -1;
+    }
+
+    private float clampOffset(float o) {
+        int h = getHeight();
+        float min = -h * 0.4f, max = Math.max(min, totalHeight - h * 0.6f);
+        return Math.max(min, Math.min(max, o));
     }
 
     /** Позиция трека в мс. */
@@ -123,12 +188,27 @@ public class LyricsView extends View {
         // плавность не зависит от частоты кадров: ~200 мс на основную часть пути
         float dt = lastFrame == 0 ? 16f : Math.min(64f, (now - lastFrame) / 1e6f);
         lastFrame = now;
-        float diff = target - offset;
-        offset += diff * (1f - (float) Math.pow(0.88, dt / 16f));
-        boolean moving = Math.abs(diff) > 0.5f;
-        if (!moving) {
-            offset = target;
-            lastFrame = 0;
+        boolean browsing = isBrowsing();
+        boolean moving;
+        if (browsing) {
+            // текст держит палец; после броска докатывается и тормозит
+            if (Math.abs(flingVelocity) > 0.02f) {
+                float before = offset;
+                offset = clampOffset(offset + flingVelocity * dt);
+                flingVelocity = offset == before ? 0 : flingVelocity * (float) Math.pow(0.95, dt / 16f);
+                browseUntil = Math.max(browseUntil, SystemClock.uptimeMillis() + BROWSE_MS / 2);
+            } else {
+                flingVelocity = 0;
+            }
+            moving = true; // перерисовываем, чтобы заметить конец листания
+        } else {
+            float diff = target - offset;
+            offset += diff * (1f - (float) Math.pow(0.88, dt / 16f));
+            moving = Math.abs(diff) > 0.5f;
+            if (!moving) {
+                offset = target;
+                lastFrame = 0;
+            }
         }
 
         float fadeZone = h * 0.15f;
@@ -140,6 +220,7 @@ public class LyricsView extends View {
             int alpha;
             if (!synced) alpha = 200;
             else if (i == current) alpha = 255;
+            else if (browsing) alpha = 140;  // пока листают — все строки читаемы
             else alpha = Math.abs(i - current) == 1 ? 125 : 75;
             // затухание у верхнего и нижнего края
             float edge = Math.min((bottom) / fadeZone, (h - y) / fadeZone);
@@ -152,6 +233,7 @@ public class LyricsView extends View {
             canvas.restore();
         }
 
-        if (moving) postInvalidateOnAnimation();
+        if (moving && browsing && flingVelocity == 0) postInvalidateDelayed(100); // ждём конца листания
+        else if (moving) postInvalidateOnAnimation();
     }
 }

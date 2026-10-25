@@ -8,6 +8,7 @@ import android.content.DialogInterface;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.BlurMaskFilter;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -94,6 +95,9 @@ public class MainActivity extends Activity {
     private long shownSecond = -2, shownDuration = -1;
     private boolean playing;
     private long position, duration, receivedAt, pausedSince;
+    private long seekHoldUntil;   // после перемотки не верим старой позиции с сервера
+    private boolean seekDragging; // палец тянет полоску прогресса
+    private boolean lyricsDrag;   // палец листает текст
     private boolean connected;
 
     private final Random random = new Random();
@@ -169,9 +173,33 @@ public class MainActivity extends Activity {
         root.setBackgroundDrawable(background);
         // жесты: тап — пауза/продолжить, свайп — следующий/предыдущий, долгое нажатие — адрес ПК
         final GestureDetector gestures = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
-            @Override public boolean onDown(MotionEvent e) { return true; }
+            @Override public boolean onDown(MotionEvent e) {
+                lyricsDrag = false;
+                lyrics.stopFling();
+                return true;
+            }
+            @Override public boolean onScroll(MotionEvent a, MotionEvent b, float dx, float dy) {
+                if (player.getVisibility() != View.VISIBLE || !lyrics.hasLyrics() || dark.getVisibility() == View.VISIBLE) return false;
+                if (!lyricsDrag) {
+                    // листаем только вертикальным движением, начатым на тексте
+                    float tx = b.getX() - a.getX(), ty = b.getY() - a.getY();
+                    if (Math.abs(ty) < dp(12) || Math.abs(ty) < Math.abs(tx) || !inside(lyrics, a)) return false;
+                    lyricsDrag = true;
+                }
+                lyrics.scrollByUser(dy);
+                return true;
+            }
             @Override public boolean onSingleTapUp(MotionEvent e) {
                 if (wakeFromDark()) return true;
+                if (player.getVisibility() == View.VISIBLE && lyrics.isBrowsing() && inside(lyrics, e)) {
+                    // текст пролистан — тап по строке перематывает на неё
+                    long t = lyrics.timeAt(e.getRawY() - screenY(lyrics));
+                    if (t >= 0) {
+                        seekTo(t);
+                        lyrics.endBrowsing();
+                    }
+                    return true;
+                }
                 if (player.getVisibility() == View.VISIBLE) {
                     control("toggle");
                     flash(playing ? "❚❚" : "▶");
@@ -180,6 +208,10 @@ public class MainActivity extends Activity {
             }
             @Override public boolean onFling(MotionEvent a, MotionEvent b, float vx, float vy) {
                 if (wakeFromDark() || player.getVisibility() != View.VISIBLE) return true;
+                if (lyricsDrag) {
+                    lyrics.flingByUser(vy);
+                    return true;
+                }
                 float dx = b.getX() - a.getX();
                 if (Math.abs(dx) > dp(100) && Math.abs(vx) > Math.abs(vy)) {
                     control(dx < 0 ? "next" : "prev");
@@ -190,7 +222,10 @@ public class MainActivity extends Activity {
             @Override public void onLongPress(MotionEvent e) { askServer(); }
         });
         root.setOnTouchListener(new View.OnTouchListener() {
-            public boolean onTouch(View v, MotionEvent e) { return gestures.onTouchEvent(e); }
+            public boolean onTouch(View v, MotionEvent e) {
+                if (dragSeek(e)) return true;
+                return gestures.onTouchEvent(e);
+            }
         });
 
         // --- экран трека ---
@@ -202,7 +237,16 @@ public class MainActivity extends Activity {
         cover = new ImageView(this);
         cover.setScaleType(ImageView.ScaleType.CENTER_CROP);
         cover.setImageDrawable(new ColorDrawable(0x33ffffff));
-        player.addView(cover, new LinearLayout.LayoutParams(dp(400), dp(400)));
+        // мягкая тень под обложкой: рамка шире обложки на SHADOW с каждой стороны,
+        // а отрицательные отступы оставляют обложку на прежнем месте
+        int sh = dp(SHADOW);
+        FrameLayout coverFrame = new FrameLayout(this);
+        coverFrame.setBackgroundDrawable(new BitmapDrawable(getResources(), coverShadow(dp(400), sh)));
+        coverFrame.setPadding(sh, sh, sh, sh);
+        coverFrame.addView(cover, new FrameLayout.LayoutParams(dp(400), dp(400)));
+        LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(dp(400) + 2 * sh, dp(400) + 2 * sh);
+        cp.setMargins(-sh, -sh, -sh, -sh);
+        player.addView(coverFrame, cp);
 
         LinearLayout right = new LinearLayout(this);
         right.setOrientation(LinearLayout.VERTICAL);
@@ -422,6 +466,18 @@ public class MainActivity extends Activity {
         bgColor = to;
     }
 
+    private static final int SHADOW = 36;
+
+    /** Картинка тени для обложки size×size с полями pad: размытие ~18 dp, 55%, сдвиг вниз 8 dp. */
+    private Bitmap coverShadow(int size, int pad) {
+        Bitmap b = Bitmap.createBitmap(size + 2 * pad, size + 2 * pad, Bitmap.Config.ARGB_8888);
+        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        p.setColor(0x8c000000);
+        p.setMaskFilter(new BlurMaskFilter(dp(30), BlurMaskFilter.Blur.NORMAL));
+        new Canvas(b).drawRect(pad, pad + dp(8), pad + size, pad + size + dp(8), p);
+        return b;
+    }
+
     private void setCover(Bitmap bmp) {
         Drawable from = cover.getDrawable();
         // берём только последнюю картинку, иначе переходы вкладываются друг в друга и копят память
@@ -514,6 +570,58 @@ public class MainActivity extends Activity {
         });
     }
 
+    private void seekTo(long ms) {
+        if (duration > 0) ms = Math.min(ms, duration - 1000);
+        ms = Math.max(0, ms);
+        position = ms;
+        receivedAt = SystemClock.elapsedRealtime();
+        seekHoldUntil = receivedAt + 2500;
+        control("seek/" + ms);
+    }
+
+    private float screenY(View v) {
+        int[] xy = new int[2];
+        v.getLocationOnScreen(xy);
+        return xy[1];
+    }
+
+    private boolean inside(View v, MotionEvent e) {
+        int[] xy = new int[2];
+        v.getLocationOnScreen(xy);
+        float x = e.getRawX(), y = e.getRawY();
+        return x >= xy[0] && x < xy[0] + v.getWidth() && y >= xy[1] && y < xy[1] + v.getHeight();
+    }
+
+    /** Перемотка: палец на полоске прогресса (зона касания выше и ниже самой полоски). */
+    private boolean dragSeek(MotionEvent e) {
+        int action = e.getActionMasked();
+        if (action == MotionEvent.ACTION_DOWN) {
+            seekDragging = false;
+            if (dark.getVisibility() == View.VISIBLE || player.getVisibility() != View.VISIBLE || duration <= 0) return false;
+            int[] xy = new int[2];
+            progress.getLocationOnScreen(xy);
+            float x = e.getRawX(), y = e.getRawY();
+            if (x < xy[0] - dp(12) || x > xy[0] + progress.getWidth() + dp(12)
+                    || Math.abs(y - (xy[1] + progress.getHeight() / 2f)) > dp(22)) return false;
+            seekDragging = true;
+        }
+        if (!seekDragging) return false;
+        int[] xy = new int[2];
+        progress.getLocationOnScreen(xy);
+        float f = Math.max(0, Math.min(1, (e.getRawX() - xy[0]) / Math.max(1, progress.getWidth())));
+        long ms = (long) (f * duration);
+        progress.setFraction(f);
+        progress.setActive(action != MotionEvent.ACTION_UP && action != MotionEvent.ACTION_CANCEL);
+        timeLeft.setText(fmt(ms));
+        if (action == MotionEvent.ACTION_UP) {
+            seekDragging = false;
+            seekTo(ms);
+        } else if (action == MotionEvent.ACTION_CANCEL) {
+            seekDragging = false;
+        }
+        return true;
+    }
+
     private static String fmt(long ms) {
         long s = Math.max(0, ms / 1000);
         return String.format(Locale.US, "%d:%02d", s / 60, s % 60);
@@ -526,7 +634,7 @@ public class MainActivity extends Activity {
 
     private final Runnable ticker = new Runnable() {
         public void run() {
-            if (trackId != null) {
+            if (trackId != null && !seekDragging) {
                 long p = livePosition();
                 progress.setFraction(duration > 0 ? (float) p / duration : 0);
                 long sec = duration > 0 ? p / 1000 : -1;
@@ -695,7 +803,8 @@ public class MainActivity extends Activity {
         String id = j.isNull("track_id") ? null : j.optString("track_id", null);
         boolean wasPlaying = playing;
         playing = j.optBoolean("playing");
-        position = j.optLong("position_ms");
+        // сразу после перемотки сервер может ещё отдать старую позицию
+        if (SystemClock.elapsedRealtime() > seekHoldUntil) position = j.optLong("position_ms");
         duration = j.optLong("duration_ms");
         receivedAt = SystemClock.elapsedRealtime();
         if (!playing && (wasPlaying || pausedSince == 0)) pausedSince = receivedAt;
@@ -792,15 +901,24 @@ public class MainActivity extends Activity {
             front.setColor(0xe6ffffff);
         }
 
+        private boolean active;
+
         void setFraction(float f) {
             if (Math.abs(f - fraction) > 0.0005f) { fraction = f; invalidate(); }
+        }
+
+        /** Пока полоску тянут пальцем, рисуем на ней кружок. */
+        void setActive(boolean a) {
+            if (a != active) { active = a; invalidate(); }
         }
 
         @Override
         protected void onDraw(Canvas c) {
             float r = getHeight() / 2f;
+            float x = getWidth() * Math.max(0, Math.min(1, fraction));
             c.drawRoundRect(new android.graphics.RectF(0, 0, getWidth(), getHeight()), r, r, back);
-            c.drawRoundRect(new android.graphics.RectF(0, 0, getWidth() * Math.max(0, Math.min(1, fraction)), getHeight()), r, r, front);
+            c.drawRoundRect(new android.graphics.RectF(0, 0, x, getHeight()), r, r, front);
+            if (active) c.drawCircle(Math.max(r * 3, Math.min(getWidth() - r * 3, x)), r, r * 3, front);
         }
     }
 }
