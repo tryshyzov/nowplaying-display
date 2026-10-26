@@ -9,7 +9,8 @@ import threading
 
 DEFAULTS = {
     # экран трека
-    'track_bg': 'video',      # video — видео из Яндекс Музыки, иначе градиент; gradient; color; custom — своё
+    'theme': 'classic',       # раскладка экрана трека: classic, scene, poster, minimal, vinyl
+    'track_bg': 'video',      # video — видео из Яндекс Музыки, иначе градиент; gradient; blur; color; custom — своё
     'track_dim': 55,          # затемнение видео или своего фона за треком, %
     'shadow': True,           # тень под обложкой
     'pulse': True,            # свечение за обложкой «дышит» под музыку
@@ -30,7 +31,7 @@ DEFAULTS = {
 }
 
 # то, что нужно планшету
-UI_KEYS = ('track_bg', 'track_dim', 'shadow', 'pulse', 'clock_dim', 'night', 'night_from', 'night_to', 'dark_after_min')
+UI_KEYS = ('theme', 'track_bg', 'track_dim', 'shadow', 'pulse', 'clock_dim', 'night', 'night_from', 'night_to', 'dark_after_min')
 
 
 class Settings:
@@ -80,8 +81,10 @@ class Settings:
             elif isinstance(d, str):
                 v = str(v)[:200]
             clean[k] = v
-        if clean.get('track_bg', 'video') not in ('video', 'gradient', 'color', 'custom'):
+        if clean.get('track_bg', 'video') not in ('video', 'gradient', 'blur', 'color', 'custom'):
             clean.pop('track_bg')
+        if clean.get('theme', 'classic') not in ('classic', 'scene', 'poster', 'minimal', 'vinyl'):
+            clean.pop('theme')
         for k, lo, hi in (('track_dim', 0, 90), ('clock_dim', 0, 90), ('night_from', 0, 23),
                           ('night_to', 0, 23), ('dark_after_min', 0, 720)):
             if k in clean:

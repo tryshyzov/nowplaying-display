@@ -24,7 +24,7 @@ import urllib.parse
 
 import aiohttp
 from aiohttp import web
-from PIL import Image
+from PIL import Image, ImageEnhance, ImageFilter
 import truststore  # проверка сертификатов через хранилище Windows (достраивает цепочки, как браузер)
 from winrt.windows.media.control import (
     GlobalSystemMediaTransportControlsSessionManager as SessionManager,
@@ -368,6 +368,9 @@ async def h_now(request):
     s['bg'] = BG.info() if SETTINGS['clock_bg'] else None
     s['clip'] = CLIPS.info(s['track_id'])          # видео из Яндекс Музыки (если включено)
     s['track_media'] = TRACK_BG.info() if SETTINGS['track_bg'] == 'custom' else None
+    if SETTINGS['track_bg'] == 'blur' and s['has_art']:
+        rev = f"{s['track_id']}r{s['art_rev']}"   # новая (чёткая) обложка — новый размытый фон
+        s['track_media'] = {'id': rev, 'type': 'image', 'ext': 'jpg', 'url': f"/art/{s['track_id']}-blur.jpg?r={s['art_rev']}"}
     s['ui'] = SETTINGS.ui()
     s['weather'] = WEATHER.info()
     if request.remote not in ('127.0.0.1', '::1') and request.query.get('v'):
@@ -437,6 +440,34 @@ async def h_art(request):
     if not item:
         raise web.HTTPNotFound()
     return web.Response(body=item[0], content_type='image/jpeg', headers={'Cache-Control': 'max-age=3600'})
+
+
+blur_cache = {}   # track_id -> (jpeg обложки, размытая картинка)
+
+
+def blur_art(jpeg):
+    """Очень сильно размытая обложка на фон экрана 16:9: сначала ужимаем до 48 px (уходят все
+    детали, остаются пятна цвета), размываем, растягиваем и размываем ещё раз — без ступенек."""
+    img = Image.open(io.BytesIO(jpeg)).convert('RGB').resize((48, 48), Image.LANCZOS)
+    img = img.filter(ImageFilter.GaussianBlur(5)).resize((320, 320), Image.BICUBIC)
+    img = img.crop((0, 70, 320, 250)).filter(ImageFilter.GaussianBlur(14))
+    img = ImageEnhance.Color(img).enhance(1.25)
+    out = io.BytesIO()
+    img.save(out, 'JPEG', quality=82)
+    return out.getvalue()
+
+
+async def h_art_blur(request):
+    tid = request.match_info['id']
+    item = art.get(tid)
+    if not item:
+        raise web.HTTPNotFound()
+    cached = blur_cache.get(tid)
+    if not cached or cached[0] is not item[0]:
+        data = await asyncio.get_running_loop().run_in_executor(None, blur_art, item[0])
+        blur_cache.clear()
+        blur_cache[tid] = cached = (item[0], data)
+    return web.Response(body=cached[1], content_type='image/jpeg', headers={'Cache-Control': 'max-age=3600'})
 
 
 async def h_lyrics(request):
@@ -583,6 +614,7 @@ def create_app():
     app.add_routes([
         web.get('/api/now', h_now),
         web.get(r'/art/{id:[0-9a-f]{12}}.jpg', h_art),
+        web.get(r'/art/{id:[0-9a-f]{12}}-blur.jpg', h_art_blur),
         web.get(r'/api/lyrics/{id:[0-9a-f]{12}}', h_lyrics),
         web.get(r'/api/control/{action:toggle|next|prev}', h_control),
         web.get(r'/api/control/seek/{ms:\d{1,9}}', h_seek),

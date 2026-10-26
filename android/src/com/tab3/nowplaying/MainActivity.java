@@ -68,7 +68,13 @@ public class MainActivity extends Activity {
     private FrameLayout root;
     private GradientDrawable background;
     private int bgColor = 0xff202020;
-    private LinearLayout player, idle;
+    private LinearLayout idle;
+    private FrameLayout player;            // экран трека; раскладку внутри задаёт тема (applyTheme)
+    private LinearLayout times;
+    private VinylView vinyl;
+    private String theme = "";
+    private boolean themeShadow = true;    // тень под обложкой возможна в этой теме
+    private int coverShadowSize;
     private ImageView cover;
     private TextView title, artist, unsynced, timeLeft, timeRight, clock, date, status, flashIcon;
     private View dark;                     // чёрная шторка «экран выключен»
@@ -239,7 +245,7 @@ public class MainActivity extends Activity {
             @Override public boolean onScroll(MotionEvent a, MotionEvent b, float dx, float dy) {
                 if (player.getVisibility() != View.VISIBLE || dark.getVisibility() == View.VISIBLE) return false;
                 float tx = b.getX() - a.getX(), ty = b.getY() - a.getY();
-                if (!lyricsDrag && !volumeDrag && volume >= 0 && inside(coverFrame, a)
+                if (!lyricsDrag && !volumeDrag && volume >= 0 && coverFrame.getParent() != null && inside(coverFrame, a)
                         && Math.abs(ty) >= dp(12) && Math.abs(ty) > Math.abs(tx)) {
                     volumeDrag = true;     // вверх-вниз по обложке — громкость ПК
                     volumeStart = volume;
@@ -304,22 +310,15 @@ public class MainActivity extends Activity {
         });
 
         // --- экран трека ---
-        player = new LinearLayout(this);
-        player.setOrientation(LinearLayout.HORIZONTAL);
-        player.setGravity(Gravity.CENTER_VERTICAL);
-        player.setPadding(dp(36), dp(36), dp(36), dp(36));
+        player = new FrameLayout(this);
 
         cover = new ImageView(this);
         cover.setScaleType(ImageView.ScaleType.CENTER_CROP);
         cover.setImageDrawable(new ColorDrawable(0x33ffffff));
         // мягкая тень под обложкой: рамка шире обложки на SHADOW с каждой стороны,
         // а отрицательные отступы оставляют обложку на прежнем месте
-        int sh = dp(SHADOW);
         coverFrame = new FrameLayout(this);
-        shadowDrawable = new BitmapDrawable(getResources(), coverShadow(dp(400), sh));
-        coverFrame.setBackgroundDrawable(shadowDrawable);
-        coverFrame.setPadding(sh, sh, sh, sh);
-        coverFrame.addView(cover, new FrameLayout.LayoutParams(dp(400), dp(400)));
+        coverFrame.addView(cover, new FrameLayout.LayoutParams(dp(400), dp(400), Gravity.CENTER));
         volumeLabel = text(22, true, 255);
         volumeLabel.setShadowLayer(0, 0, 0, 0);
         volumeLabel.setGravity(Gravity.CENTER);
@@ -330,43 +329,24 @@ public class MainActivity extends Activity {
         volumeLabel.setPadding(dp(26), dp(12), dp(26), dp(12));
         volumeLabel.setAlpha(0f);
         coverFrame.addView(volumeLabel, new FrameLayout.LayoutParams(-2, -2, Gravity.CENTER));
-        LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(dp(400) + 2 * sh, dp(400) + 2 * sh);
-        cp.setMargins(-sh, -sh, -sh, -sh);
-        player.addView(coverFrame, cp);
 
-        LinearLayout right = new LinearLayout(this);
-        right.setOrientation(LinearLayout.VERTICAL);
-        right.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1);
-        rp.leftMargin = dp(36);
-        player.addView(right, rp);
+        vinyl = new VinylView(this);
 
         title = text(30, true, 255);
-        title.setMaxLines(2);
         title.setEllipsize(TextUtils.TruncateAt.END);
-        right.addView(title);
         artist = text(22, false, 200);
         artist.setSingleLine(true);
         artist.setEllipsize(TextUtils.TruncateAt.END);
-        right.addView(artist);
         unsynced = text(13, false, 130);
         unsynced.setText("текст без синхронизации");
         unsynced.setVisibility(View.GONE);
-        right.addView(unsynced);
 
         lyrics = new LyricsView(this);
         lyrics.setTypeface(fontExtraBold);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1);
-        lp.topMargin = dp(18);
-        lp.bottomMargin = dp(12);
-        right.addView(lyrics, lp);
         lyrics.setVisibility(View.GONE);
 
         progress = new ProgressLine(this);
-        LinearLayout.LayoutParams pp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(4));
-        pp.topMargin = dp(14);
-        right.addView(progress, pp);
-        LinearLayout times = new LinearLayout(this);
+        times = new LinearLayout(this);
         timeLeft = text(14, false, 170);
         timeRight = text(14, false, 170);
         timeRight.setGravity(Gravity.RIGHT);
@@ -375,7 +355,6 @@ public class MainActivity extends Activity {
         timeRight.setShadowLayer(0, 0, 0, 0);
         times.addView(timeLeft, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
         times.addView(timeRight, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
-        right.addView(times);
 
         // --- видео за экраном трека (под ним) ---
         clipLayer = new FrameLayout(this);
@@ -403,6 +382,7 @@ public class MainActivity extends Activity {
         root.addView(glow, new FrameLayout.LayoutParams(-1, -1));
 
         root.addView(player, new FrameLayout.LayoutParams(-1, -1));
+        applyTheme("classic");
 
         // --- фон для часов (под ними) ---
         bgLayer = new FrameLayout(this);
@@ -760,6 +740,182 @@ public class MainActivity extends Activity {
 
     private static final int SHADOW = 36;
 
+    // ---------------- темы экрана трека ----------------
+
+    private static LinearLayout.LayoutParams lin(int w, int h, float weight) {
+        return new LinearLayout.LayoutParams(w, h, weight);
+    }
+
+    private LinearLayout column(int gravity) {
+        LinearLayout c = new LinearLayout(this);
+        c.setOrientation(LinearLayout.VERTICAL);
+        c.setGravity(gravity);
+        return c;
+    }
+
+    /** Размер обложки (dp) и можно ли под ней тень в этой теме. */
+    private void setCoverSize(int sizePx, boolean shadowAllowed) {
+        cover.setLayoutParams(new FrameLayout.LayoutParams(sizePx, sizePx, Gravity.CENTER));
+        themeShadow = shadowAllowed;
+        int sh = shadowAllowed ? dp(SHADOW) : 0;
+        coverFrame.setPadding(sh, sh, sh, sh);
+        if (shadowAllowed && coverShadowSize != sizePx) {
+            shadowDrawable = new BitmapDrawable(getResources(), coverShadow(sizePx, sh));
+            coverShadowSize = sizePx;
+        }
+        coverFrame.setBackgroundDrawable(shadowAllowed && shadowOn ? shadowDrawable : null);
+    }
+
+    /** Обложка с тенью как элемент LinearLayout: отрицательные отступы съедают поля под тень. */
+    private LinearLayout.LayoutParams coverParams(int sizePx) {
+        int sh = themeShadow ? dp(SHADOW) : 0;
+        LinearLayout.LayoutParams cp = lin(sizePx + 2 * sh, sizePx + 2 * sh, 0);
+        cp.setMargins(-sh, -sh, -sh, -sh);
+        return cp;
+    }
+
+    /** Текстовая колонка: название, исполнитель, текст песни, полоска и время. */
+    private void fillTextColumn(LinearLayout col, int lyricsTopDp) {
+        col.addView(title);
+        col.addView(artist);
+        col.addView(unsynced);
+        LinearLayout.LayoutParams lp = lin(-1, 0, 1);
+        lp.topMargin = dp(lyricsTopDp);
+        lp.bottomMargin = dp(12);
+        col.addView(lyrics, lp);
+        LinearLayout.LayoutParams pp = lin(-1, dp(4), 0);
+        pp.topMargin = dp(14);
+        col.addView(progress, pp);
+        col.addView(times);
+    }
+
+    /** Переложить элементы экрана трека под тему: classic, scene, poster, minimal, vinyl. */
+    private void applyTheme(String t) {
+        if (t.equals(theme)) return;
+        theme = t;
+        for (View v : new View[]{coverFrame, title, artist, unsynced, lyrics, progress, times, vinyl}) {
+            if (v.getParent() != null) ((android.view.ViewGroup) v.getParent()).removeView(v);
+        }
+        player.removeAllViews();
+        // общие значения, темы меняют только своё
+        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 30);
+        title.setGravity(Gravity.LEFT);
+        title.setMaxLines(2);
+        artist.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
+        artist.setGravity(Gravity.LEFT);
+        artist.setAllCaps(false);
+        artist.setTextColor(Color.argb(200, 255, 255, 255));
+        unsynced.setGravity(Gravity.LEFT);
+        lyrics.setCentered(false);
+        lyrics.setTextSizeSp(26);
+        times.setVisibility(View.VISIBLE);
+        vinyl.setSpinning(false);
+        int screenH = Math.min(getResources().getDisplayMetrics().heightPixels, getResources().getDisplayMetrics().widthPixels);
+
+        if ("scene".equals(t)) {
+            // обложка по центру сверху, под ней название и пара строк текста по центру
+            LinearLayout col = column(Gravity.CENTER_HORIZONTAL);
+            col.setPadding(dp(48), dp(30), dp(48), dp(26));
+            setCoverSize(dp(280), true);
+            col.addView(coverFrame, coverParams(dp(280)));
+            title.setGravity(Gravity.CENTER_HORIZONTAL);
+            title.setMaxLines(1);
+            artist.setGravity(Gravity.CENTER_HORIZONTAL);
+            artist.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20);
+            unsynced.setGravity(Gravity.CENTER_HORIZONTAL);
+            LinearLayout.LayoutParams tp = lin(-1, -2, 0);
+            tp.topMargin = dp(14);
+            col.addView(title, tp);
+            col.addView(artist, lin(-1, -2, 0));
+            col.addView(unsynced, lin(-1, -2, 0));
+            lyrics.setCentered(true);
+            lyrics.setTextSizeSp(26);
+            LinearLayout.LayoutParams lp = lin(-1, 0, 1);
+            lp.topMargin = dp(8);
+            col.addView(lyrics, lp);
+            LinearLayout.LayoutParams pp = lin(dp(420), dp(3), 0);
+            pp.topMargin = dp(10);
+            col.addView(progress, pp);
+            times.setVisibility(View.GONE);
+            player.addView(col, new FrameLayout.LayoutParams(-1, -1));
+            glowDrawable.setGradientCenter(0.5f, 0.28f);
+        } else if ("poster".equals(t)) {
+            // обложка во всю высоту слева, без полей и тени; текст справа
+            LinearLayout row = new LinearLayout(this);
+            setCoverSize(screenH, false);
+            row.addView(coverFrame, lin(screenH, screenH, 0));
+            LinearLayout col = column(Gravity.CENTER_VERTICAL);
+            col.setPadding(dp(36), dp(36), dp(36), dp(30));
+            title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 32);
+            artist.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20);
+            lyrics.setTextSizeSp(24);
+            fillTextColumn(col, 16);
+            row.addView(col, lin(0, -1, 1));
+            player.addView(row, new FrameLayout.LayoutParams(-1, -1));
+            glowDrawable.setGradientCenter(0.3f, 0.5f);
+        } else if ("minimal".equals(t)) {
+            // без обложки: крупная типографика и крупный текст песни
+            LinearLayout col = column(Gravity.LEFT);
+            col.setPadding(dp(64), dp(50), dp(64), dp(36));
+            artist.setAllCaps(true);
+            artist.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17);
+            artist.setTextColor(Color.argb(150, 255, 255, 255));
+            title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 56);
+            title.setMaxLines(1);
+            col.addView(artist);
+            col.addView(title);
+            col.addView(unsynced);
+            lyrics.setTextSizeSp(38);
+            LinearLayout.LayoutParams lp = lin(-1, 0, 1);
+            lp.topMargin = dp(20);
+            lp.bottomMargin = dp(10);
+            col.addView(lyrics, lp);
+            LinearLayout.LayoutParams pp = lin(-1, dp(3), 0);
+            pp.topMargin = dp(10);
+            col.addView(progress, pp);
+            col.addView(times);
+            player.addView(col, new FrameLayout.LayoutParams(-1, -1));
+            glowDrawable.setGradientCenter(0.5f, 0.5f);
+        } else if ("vinyl".equals(t)) {
+            // конверт-обложка слева, из него выезжает крутящаяся пластинка, текст справа
+            FrameLayout stage = new FrameLayout(this);
+            int disc = dp(400), sleeve = dp(360), sh = dp(SHADOW);
+            FrameLayout.LayoutParams vp = new FrameLayout.LayoutParams(disc, disc, Gravity.LEFT | Gravity.CENTER_VERTICAL);
+            vp.leftMargin = dp(250);   // пластинка выезжает из конверта, наклейка видна
+            stage.addView(vinyl, vp);
+            setCoverSize(sleeve, true);
+            FrameLayout.LayoutParams cp = new FrameLayout.LayoutParams(sleeve + 2 * sh, sleeve + 2 * sh, Gravity.LEFT | Gravity.CENTER_VERTICAL);
+            cp.leftMargin = dp(36) - sh;
+            stage.addView(coverFrame, cp);
+            LinearLayout col = column(Gravity.CENTER_VERTICAL);
+            col.setPadding(0, dp(40), dp(36), dp(36));
+            title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 26);
+            artist.setTextSize(TypedValue.COMPLEX_UNIT_SP, 19);
+            lyrics.setTextSizeSp(21);
+            fillTextColumn(col, 14);
+            FrameLayout.LayoutParams colp = new FrameLayout.LayoutParams(-1, -1);
+            colp.leftMargin = dp(250) + disc + dp(30);
+            stage.addView(col, colp);
+            player.addView(stage, new FrameLayout.LayoutParams(-1, -1));
+            glowDrawable.setGradientCenter(0.3f, 0.5f);
+        } else {
+            // «Классика»: обложка слева, текст справа
+            LinearLayout row = new LinearLayout(this);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(dp(36), dp(36), dp(36), dp(36));
+            setCoverSize(dp(400), true);
+            row.addView(coverFrame, coverParams(dp(400)));
+            LinearLayout col = column(Gravity.CENTER_VERTICAL);
+            fillTextColumn(col, 18);
+            LinearLayout.LayoutParams rp = lin(0, -1, 1);
+            rp.leftMargin = dp(36);
+            row.addView(col, rp);
+            player.addView(row, new FrameLayout.LayoutParams(-1, -1));
+            glowDrawable.setGradientCenter(0.23f, 0.5f);
+        }
+        glow.invalidate();
+    }
+
     /** Картинка тени для обложки size×size с полями pad: размытие ~18 dp, 55%, сдвиг вниз 8 dp. */
     private Bitmap coverShadow(int size, int pad) {
         Bitmap b = Bitmap.createBitmap(size + 2 * pad, size + 2 * pad, Bitmap.Config.ARGB_8888);
@@ -775,6 +931,7 @@ public class MainActivity extends Activity {
         // берём только последнюю картинку, иначе переходы вкладываются друг в друга и копят память
         if (from instanceof TransitionDrawable) from = ((TransitionDrawable) from).getDrawable(1);
         Drawable to = bmp != null ? new BitmapDrawable(getResources(), bmp) : new ColorDrawable(0x33ffffff);
+        vinyl.setLabel(bmp);
         if (from == null) from = new ColorDrawable(0);
         TransitionDrawable t = new TransitionDrawable(new Drawable[]{from, to});
         t.setCrossFadeEnabled(true);
@@ -889,6 +1046,7 @@ public class MainActivity extends Activity {
     /** 25 раз в секунду: прозрачность свечения по уровню звука (с лёгким сглаживанием). */
     private final Runnable glowTick = new Runnable() {
         public void run() {
+            vinyl.setSpinning("vinyl".equals(theme) && playerShown && playing && dark.getVisibility() != View.VISIBLE);
             boolean on = pulseOn && playerShown && playing && dark.getVisibility() != View.VISIBLE;
             if (on) {
                 float target = pulseLevel;
@@ -951,10 +1109,11 @@ public class MainActivity extends Activity {
         nightShown = null;   // перекрасить часы при следующем тике
         darkAfterMs = u.optInt("dark_after_min", 30) * 60L * 1000;
         pulseOn = u.optBoolean("pulse", false);
+        applyTheme(u.optString("theme", "classic"));
         boolean sh = u.optBoolean("shadow", true);
         if (sh != shadowOn) {
             shadowOn = sh;
-            coverFrame.setBackgroundDrawable(sh ? shadowDrawable : null);
+            coverFrame.setBackgroundDrawable(sh && themeShadow ? shadowDrawable : null);
         }
         if (modeChanged && lastNow != null) {
             forceBackground = true;
@@ -1231,9 +1390,9 @@ public class MainActivity extends Activity {
         // за треком: своё фото/видео или видео клипа из Яндекс Музыки
         String nclip = null, path = null, type = "video";
         JSONObject tm = j.optJSONObject("track_media");
-        if ("custom".equals(trackBgMode) && tm != null) {
+        if (tm != null) {   // своё фото/видео или размытая обложка — сервер присылает только то, что выбрано
             nclip = "t:" + tm.optString("id");
-            path = "/bg-track/" + tm.optString("id") + "." + tm.optString("ext", "mp4");
+            path = tm.has("url") ? tm.optString("url") : "/bg-track/" + tm.optString("id") + "." + tm.optString("ext", "mp4");
             type = tm.optString("type", "video");
         } else if (!j.isNull("clip") && j.optString("clip", "").length() > 0) {
             nclip = "c:" + j.optString("clip");

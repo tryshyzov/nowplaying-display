@@ -45,6 +45,22 @@ public class LyricsView extends View {
         return v * getResources().getDisplayMetrics().scaledDensity;
     }
 
+    private boolean centered;
+
+    /** Строки по центру (тема «Сцена») или по левому краю. */
+    public void setCentered(boolean c) {
+        if (c == centered) return;
+        centered = c;
+        builtWidth = -1;
+        invalidate();
+    }
+
+    public void setTextSizeSp(float size) {
+        paint.setTextSize(sp(size));
+        builtWidth = -1;
+        invalidate();
+    }
+
     public void setTypeface(Typeface tf) {
         paint.setTypeface(tf);
         builtWidth = -1;
@@ -159,7 +175,7 @@ public class LyricsView extends View {
         for (int i = 0; i < texts.size(); i++) {
             String s = texts.get(i);
             StaticLayout l = new StaticLayout(s.length() == 0 ? "♪" : s, paint, width,
-                    Layout.Alignment.ALIGN_NORMAL, 1.05f, 0, false);
+                    centered ? Layout.Alignment.ALIGN_CENTER : Layout.Alignment.ALIGN_NORMAL, 1.05f, 0, false);
             layouts.add(l);
             tops[i] = y;
             y += l.getHeight() + gap;

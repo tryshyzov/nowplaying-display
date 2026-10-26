@@ -91,7 +91,15 @@ select option { background: #222; }
 .btns { display: flex; gap: 8px; flex-wrap: wrap; }
 
 /* выбор фона за обложкой */
-.modes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.modes { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+.themes { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+.theme { background: var(--card-hi); border: 1.5px solid transparent; border-radius: 12px; padding: 6px 6px 9px; cursor: pointer;
+  text-align: left; transition: border-color .15s, background .15s; }
+.theme:hover { background: #29292d; }
+.theme.on { border-color: var(--accent); }
+.theme img { display: block; width: 100%; aspect-ratio: 1024 / 600; object-fit: cover; border-radius: 7px; }
+.theme b { display: block; font-weight: 500; margin: 7px 2px 0; font-size: 13px; }
+.theme small { display: block; color: var(--dim); font-size: 11.5px; margin: 1px 2px 0; line-height: 1.3; }
 .mode { background: var(--card-hi); border: 1.5px solid transparent; border-radius: 12px; padding: 8px 8px 10px; cursor: pointer;
   text-align: left; transition: border-color .15s, background .15s; }
 .mode:hover { background: #29292d; }
@@ -109,6 +117,8 @@ select option { background: #222; }
   border-top: 6px solid transparent; border-bottom: 6px solid transparent; }
 .t-gradient { background: linear-gradient(135deg, #6a2f3c, #3a2350 55%, #1c2a4a); }
 .t-color { background: #3b2734; }
+.t-blur { background: radial-gradient(circle at 30% 30%, #e0805a, transparent 60%), radial-gradient(circle at 75% 75%, #4c7fb0, transparent 60%), #8a6a7a; }
+.t-blur::after { content: ''; position: absolute; inset: 0; background: rgba(0,0,0,.3); }
 .t-custom { background: repeating-linear-gradient(45deg, #26262a 0 6px, #2c2c31 6px 12px); }
 .t-custom.has { background-size: cover; background-position: center; }
 
@@ -163,7 +173,7 @@ select option { background: #222; }
   .app { grid-template-columns: 1fr; }
   aside { display: none; }
   main { padding: 24px 16px 50px; }
-  .modes { grid-template-columns: repeat(2, 1fr); }
+  .modes, .themes { grid-template-columns: repeat(2, 1fr); }
   .row { flex-wrap: wrap; }
   .range, .city { width: 100%; }
 }
@@ -192,10 +202,21 @@ select option { background: #222; }
       <p class="lead">Что видно за обложкой и текстом, пока играет музыка. Всё применяется сразу — смотри на планшет.</p>
       <div class="card">
         <div class="row stack">
+          <div class="t"><b>Вид экрана</b><small>Как расположены обложка и текст. Фон выбирается ниже и подходит к любому виду</small></div>
+          <div class="themes" id="themes">
+            <button class="theme" data-theme="classic"><img src="/settings-ui/themes/classic.jpg" alt=""><b>Классика</b><small>Обложка слева, текст справа</small></button>
+            <button class="theme" data-theme="scene"><img src="/settings-ui/themes/scene.jpg" alt=""><b>Сцена</b><small>Обложка по центру, строка текста под ней</small></button>
+            <button class="theme" data-theme="poster"><img src="/settings-ui/themes/poster.jpg" alt=""><b>Постер</b><small>Обложка во всю высоту экрана</small></button>
+            <button class="theme" data-theme="minimal"><img src="/settings-ui/themes/minimal.jpg" alt=""><b>Минимал</b><small>Без обложки, крупный текст</small></button>
+            <button class="theme" data-theme="vinyl"><img src="/settings-ui/themes/vinyl.jpg" alt=""><b>Винил</b><small>Пластинка крутится, пока играет</small></button>
+          </div>
+        </div>
+        <div class="row stack">
           <div class="t"><b>Фон за обложкой</b></div>
           <div class="modes" id="modes">
             <button class="mode" data-mode="video"><div class="thumb t-video"><i class="cv"></i><i class="ln" style="top:38%;width:30%"></i><i class="ln d" style="top:50%;width:38%"></i><i class="ln d" style="top:62%;width:26%"></i></div><b>Видео из клипа</b><small>Из Яндекс Музыки, если есть. Иначе градиент</small></button>
             <button class="mode" data-mode="gradient"><div class="thumb t-gradient"><i class="cv"></i><i class="ln" style="top:38%;width:30%"></i><i class="ln d" style="top:50%;width:38%"></i><i class="ln d" style="top:62%;width:26%"></i></div><b>Градиент</b><small>Из трёх цветов обложки</small></button>
+            <button class="mode" data-mode="blur"><div class="thumb t-blur"><i class="cv"></i><i class="ln" style="top:38%;width:30%"></i><i class="ln d" style="top:50%;width:38%"></i><i class="ln d" style="top:62%;width:26%"></i></div><b>Размытая обложка</b><small>Очень сильно размытая обложка на весь экран</small></button>
             <button class="mode" data-mode="color"><div class="thumb t-color"><i class="cv"></i><i class="ln" style="top:38%;width:30%"></i><i class="ln d" style="top:50%;width:38%"></i><i class="ln d" style="top:62%;width:26%"></i></div><b>Цвет</b><small>Один приглушённый цвет обложки</small></button>
             <button class="mode" data-mode="custom"><div class="thumb t-custom" id="customThumb"><i class="cv"></i><i class="ln" style="top:38%;width:30%"></i><i class="ln d" style="top:50%;width:38%"></i><i class="ln d" style="top:62%;width:26%"></i></div><b>Своё</b><small>Твоё фото или видео для всех песен</small></button>
           </div>
@@ -386,6 +407,7 @@ function render(st) {
     else if (document.activeElement !== el) el.value = s[k];
   }
   for (const m of $$('.mode')) m.classList.toggle('on', m.dataset.mode === s.track_bg);
+  for (const m of $$('.theme')) m.classList.toggle('on', m.dataset.theme === s.theme);
   $('#trackMediaRow').hidden = s.track_bg !== 'custom';
   mediaPreview($('#trackPreview'), st.track_media);
   mediaPreview($('#clockPreview'), st.clock_media);
@@ -426,6 +448,7 @@ for (const el of $$('[data-key]')) {
   } else if (el.type === 'checkbox') el.addEventListener('change', () => save({ [k]: el.checked }));
   else if (el.tagName === 'SELECT') el.addEventListener('change', () => save({ [k]: +el.value }));
 }
+for (const m of $$('.theme')) m.addEventListener('click', () => save({ theme: m.dataset.theme }));
 for (const m of $$('.mode')) m.addEventListener('click', () => {
   if (m.dataset.mode === 'custom' && !S.track_media) { pickKind = 'track'; $('#filePick').click(); }
   save({ track_bg: m.dataset.mode });
