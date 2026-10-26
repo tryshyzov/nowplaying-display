@@ -41,7 +41,7 @@ import updater
 import volume
 import yandex
 
-VERSION = '1.6'       # версия программы для ПК (= тег релиза на GitHub)
+VERSION = '1.6.1'     # версия программы для ПК (= тег релиза на GitHub)
 HTTP_PORT = int(os.environ.get('NP_HTTP_PORT', '47801'))
 UDP_PORT = int(os.environ.get('NP_UDP_PORT', '47800'))
 POLL = 0.5           # секунд между опросами панели Windows

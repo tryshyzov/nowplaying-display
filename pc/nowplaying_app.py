@@ -30,6 +30,26 @@ def _startup_note(text):
 
 _startup_note(f'launch cwd={os.getcwd()!r} exe={sys.executable!r}')
 
+
+def clean_env():
+    """Окружение для запуска новой копии exe. Без PYINSTALLER_RESET_ENVIRONMENT новая копия
+    решит, что она «дочка» текущей, и возьмёт её временную папку с распакованными файлами —
+    а та удаляется, когда текущая копия закрывается (так падала 1.6 после автообновления)."""
+    env = dict(os.environ)
+    env['PYINSTALLER_RESET_ENVIRONMENT'] = '1'
+    env['NP_CLEAN_START'] = '1'
+    return env
+
+
+# Запустили после обновления, но, возможно, старая версия (1.6) не сбросила окружение и мы
+# работаем из её временной папки. Сразу перезапускаемся начисто, пока папка ещё на месте.
+if getattr(sys, 'frozen', False) and '--after-update' in sys.argv and not os.environ.get('NP_CLEAN_START'):
+    import subprocess
+    _startup_note('after update: restarting with a clean environment')
+    subprocess.Popen([sys.executable, *sys.argv[1:]], env=clean_env(), close_fds=True,
+                     creationflags=0x00000008 | 0x00000200)  # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+    sys.exit(0)
+
 try:
     import asyncio
     import ctypes
@@ -291,7 +311,7 @@ def apply_update():
         server.UPDATER.exe = None
         return False
     log.info('update: replaced exe with %s, restarting', server.UPDATER.latest)
-    subprocess.Popen([cur, AFTER_UPDATE], close_fds=True,
+    subprocess.Popen([cur, AFTER_UPDATE], close_fds=True, env=clean_env(),
                      creationflags=0x00000008 | 0x00000200)  # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
     return True
 
@@ -439,7 +459,7 @@ if __name__ == '__main__':
         # сразу после включения ПК даём Windows дособрать панель задач, иначе значок в трее может не встать
         ctypes.windll.kernel32.GetTickCount64.restype = ctypes.c_ulonglong
         uptime = ctypes.windll.kernel32.GetTickCount64() / 1000
-        if uptime < 180:
+        if uptime < 180 and '--after-update' not in sys.argv:   # после обновления ждать незачем
             _startup_note(f'early start (uptime {uptime:.0f}s), waiting 20s')
             time.sleep(20)
         main()
