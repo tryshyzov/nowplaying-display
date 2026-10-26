@@ -34,6 +34,7 @@ from winrt.windows.storage.streams import Buffer, InputStreamOptions
 
 import background
 import clips
+import pulse
 import settings
 import settings_web
 import weather
@@ -41,7 +42,7 @@ import updater
 import volume
 import yandex
 
-VERSION = '1.6.1'     # версия программы для ПК (= тег релиза на GitHub)
+VERSION = '1.7'       # версия программы для ПК (= тег релиза на GitHub)
 HTTP_PORT = int(os.environ.get('NP_HTTP_PORT', '47801'))
 UDP_PORT = int(os.environ.get('NP_UDP_PORT', '47800'))
 POLL = 0.5           # секунд между опросами панели Windows
@@ -466,6 +467,7 @@ TRACK_BG = background.Background(src_dir=os.path.join(background.default_dir(), 
 CLIPS = clips.Clips()
 UPDATER = updater.Updater(VERSION)
 WEATHER = weather.Weather(SETTINGS)
+PULSE = pulse.Pulse()
 LAST_CLIENT = {}   # последний планшет, который спрашивал /api/now: ip, время, версия приложения
 
 
@@ -488,6 +490,29 @@ def tablet_apk():
     if released and (not bundled or updater.version_tuple(UPDATER.apk[0]) > updater.version_tuple(VERSION)):
         return released
     return bundled
+
+
+async def h_pulse(request):
+    """Поток уровня звука для «дыхания» фона: строка «0.42» 25 раз в секунду.
+    Планшет держит соединение открытым; через 10 минут сервер его закрывает — планшет
+    переподключится (так не копятся забытые соединения)."""
+    resp = web.StreamResponse(headers={'Content-Type': 'text/plain', 'Cache-Control': 'no-store'})
+    await resp.prepare(request)
+    PULSE.clients += 1
+    try:
+        end = time.time() + 600
+        while time.time() < end:
+            on = state['playing'] and SETTINGS['pulse']
+            PULSE.want(on)
+            await resp.write(b'%.2f\n' % (PULSE.level if on else 0.0))
+            await asyncio.sleep(1 / 25)
+    except Exception:   # планшет отключился
+        pass
+    finally:
+        PULSE.clients -= 1
+        if PULSE.clients <= 0:
+            PULSE.want(False)
+    return resp
 
 
 async def h_track_bg(request):
@@ -565,6 +590,7 @@ def create_app():
         web.get(r'/bg/{id:[0-9a-f]{12}}.{ext:jpg|mp4}', h_bg),
         web.get(r'/clip/{id:[0-9a-f]{12}}.mp4', h_clip),
         web.get('/update/app.apk', h_apk),
+        web.get('/api/pulse', h_pulse),
         web.get(r'/bg-track/{id:[0-9a-f]{12}}.{ext:jpg|mp4}', h_track_bg),
         *settings_web.routes(sys.modules[__name__]),
         web.get('/health', lambda r: web.Response(text='ok')),

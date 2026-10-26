@@ -113,7 +113,7 @@ public class MainActivity extends Activity {
     private String trackId;
     private int artRev = -1;
     private long shownSecond = -2, shownDuration = -1;
-    private boolean playing;
+    private volatile boolean playing;   // читается и потоком «дыхания»
     private long position, duration, receivedAt, pausedSince;
     private long seekHoldUntil;   // после перемотки не верим старой позиции с сервера
     private boolean seekDragging; // палец тянет полоску прогресса
@@ -144,6 +144,12 @@ public class MainActivity extends Activity {
     private View bgDim;
     private Boolean nightShown;   // какой вид часов сейчас (ночной или нет)
     private int[] bgColors = {0xff202020, 0xff0e0e0e, 0xff0e0e0e};
+    // свечение за обложкой, «дышит» под музыку (уровень звука ПК идёт потоком с /api/pulse)
+    private View glow;
+    private GradientDrawable glowDrawable;
+    private volatile boolean pulseOn, playerShown;   // pulseOn — только если сервер его знает (1.7+)
+    private volatile float pulseLevel;
+    private float glowShown;
     private boolean connected;
 
     private final Random random = new Random();
@@ -173,8 +179,10 @@ public class MainActivity extends Activity {
         running = true;
         final int gen = ++generation;
         new Thread(new Runnable() { public void run() { networkLoop(gen); } }, "np-net").start();
+        new Thread(new Runnable() { public void run() { pulseLoop(gen); } }, "np-pulse").start();
         ui.post(ticker);
         ui.post(clockTick);
+        ui.post(glowTick);
     }
 
     @Override
@@ -185,6 +193,7 @@ public class MainActivity extends Activity {
         syncClip(false);
         ui.removeCallbacks(ticker);
         ui.removeCallbacks(clockTick);
+        ui.removeCallbacks(glowTick);
     }
 
     // ---------------- интерфейс ----------------
@@ -381,6 +390,17 @@ public class MainActivity extends Activity {
         clipLayer.addView(clipDim, new FrameLayout.LayoutParams(-1, -1));
         clipLayer.setVisibility(View.GONE);
         root.addView(clipLayer, new FrameLayout.LayoutParams(-1, -1));
+        glowDrawable = new GradientDrawable();
+        glowDrawable.setGradientType(GradientDrawable.RADIAL_GRADIENT);
+        glowDrawable.setGradientRadius(dp(460));
+        glowDrawable.setGradientCenter(0.23f, 0.5f);   // центр обложки
+        glowDrawable.setColors(new int[]{0x00000000, 0x00000000});
+        glow = new View(this);
+        glow.setBackgroundDrawable(glowDrawable);
+        glow.setLayerType(View.LAYER_TYPE_HARDWARE, null);   // меняем только прозрачность — дёшево
+        glow.setAlpha(0f);
+        glow.setVisibility(View.GONE);
+        root.addView(glow, new FrameLayout.LayoutParams(-1, -1));
 
         root.addView(player, new FrameLayout.LayoutParams(-1, -1));
 
@@ -441,6 +461,7 @@ public class MainActivity extends Activity {
     }
 
     private void showIdle(boolean on) {
+        playerShown = !on;
         idle.setVisibility(on ? View.VISIBLE : View.GONE);
         player.setVisibility(on ? View.GONE : View.VISIBLE);
         bgLayer.setVisibility(on && bgReady ? View.VISIBLE : View.GONE);
@@ -733,6 +754,7 @@ public class MainActivity extends Activity {
         });
         a.start();
         bgColors = to;
+        setGlowColor(to);
         bgColor = to[0];
     }
 
@@ -850,6 +872,65 @@ public class MainActivity extends Activity {
         });
     }
 
+    /** Свечение — самый яркий из цветов фона, поднятый по яркости (фон сам по себе приглушён). */
+    private void setGlowColor(int[] colors) {
+        float[] best = null;
+        for (int c : colors) {
+            float[] hsv = new float[3];
+            Color.colorToHSV(c, hsv);
+            if (best == null || hsv[1] * hsv[2] > best[1] * best[2]) best = hsv;
+        }
+        best[1] = Math.max(best[1], 0.45f);
+        best[2] = 0.95f;
+        int c = Color.HSVToColor(best);
+        glowDrawable.setColors(new int[]{(c & 0x00ffffff) | 0x99000000, c & 0x00ffffff});
+    }
+
+    /** 25 раз в секунду: прозрачность свечения по уровню звука (с лёгким сглаживанием). */
+    private final Runnable glowTick = new Runnable() {
+        public void run() {
+            boolean on = pulseOn && playerShown && playing && dark.getVisibility() != View.VISIBLE;
+            if (on) {
+                float target = pulseLevel;
+                glowShown += (target - glowShown) * (target > glowShown ? 0.6f : 0.18f);
+                if (glow.getVisibility() != View.VISIBLE) glow.setVisibility(View.VISIBLE);
+                glow.setAlpha(0.15f + 0.85f * glowShown);
+            } else if (glow.getVisibility() == View.VISIBLE) {
+                glowShown = 0;
+                glow.setVisibility(View.GONE);
+            }
+            ui.postDelayed(this, 40);
+        }
+    };
+
+    /** Держит открытым поток /api/pulse, пока показывается экран трека и играет музыка. */
+    private void pulseLoop(int gen) {
+        while (running && gen == generation) {
+            String s = server;
+            if (!pulseOn || !playerShown || !playing || s == null) {
+                pulseLevel = 0;
+                SystemClock.sleep(1000);
+                continue;
+            }
+            HttpURLConnection c = null;
+            try {
+                c = (HttpURLConnection) new URL("http://" + s + "/api/pulse").openConnection();
+                c.setConnectTimeout(3000);
+                c.setReadTimeout(5000);
+                java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(c.getInputStream()));
+                String line;
+                while (running && gen == generation && pulseOn && playerShown && playing && (line = r.readLine()) != null) {
+                    try { pulseLevel = Float.parseFloat(line.trim()); } catch (NumberFormatException ignored) { }
+                }
+            } catch (Exception e) {
+                SystemClock.sleep(2000);   // сервер старый (нет /api/pulse) или нет связи
+            } finally {
+                if (c != null) c.disconnect();
+            }
+            pulseLevel = 0;
+        }
+    }
+
     private static int dimColor(int percent) {
         return Color.argb(Math.round(percent * 2.55f), 0, 0, 0);
     }
@@ -869,6 +950,7 @@ public class MainActivity extends Activity {
         nightTo = u.optInt("night_to", 8);
         nightShown = null;   // перекрасить часы при следующем тике
         darkAfterMs = u.optInt("dark_after_min", 30) * 60L * 1000;
+        pulseOn = u.optBoolean("pulse", false);
         boolean sh = u.optBoolean("shadow", true);
         if (sh != shadowOn) {
             shadowOn = sh;

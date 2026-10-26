@@ -12,6 +12,7 @@ DEFAULTS = {
     'track_bg': 'video',      # video — видео из Яндекс Музыки, иначе градиент; gradient; color; custom — своё
     'track_dim': 55,          # затемнение видео или своего фона за треком, %
     'shadow': True,           # тень под обложкой
+    'pulse': True,            # свечение за обложкой «дышит» под музыку
     # экран часов
     'clock_bg': True,         # показывать свой фон (самый новый файл из папки)
     'clock_dim': 35,          # затемнение фона часов, %
@@ -29,7 +30,7 @@ DEFAULTS = {
 }
 
 # то, что нужно планшету
-UI_KEYS = ('track_bg', 'track_dim', 'shadow', 'clock_dim', 'night', 'night_from', 'night_to', 'dark_after_min')
+UI_KEYS = ('track_bg', 'track_dim', 'shadow', 'pulse', 'clock_dim', 'night', 'night_from', 'night_to', 'dark_after_min')
 
 
 class Settings:

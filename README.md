@@ -41,7 +41,7 @@ Player on the PC ──► Windows media overlay ──► server on the PC ─�
 Download two files from the [latest release](../../releases/latest):
 
 - `NowPlayingServer.exe` for the PC;
-- `NowPlaying-1.6.apk` for the tablet.
+- `NowPlaying-1.7.apk` for the tablet.
 
 ### 1. Server on the PC
 
@@ -68,7 +68,7 @@ Tray menu (right-click the icon):
 
 ### 2. App on the tablet
 
-Copy `NowPlaying-1.6.apk` to the tablet and install it. You'll need to allow installs from unknown sources in the tablet settings.
+Copy `NowPlaying-1.7.apk` to the tablet and install it. You'll need to allow installs from unknown sources in the tablet settings.
 
 Open the «Сейчас играет» ("Now Playing") app. It **finds the PC on its own** and starts showing your music. If it doesn't, long-press the screen and enter the address shown in the tray menu on the PC.
 
@@ -76,7 +76,7 @@ Open the «Сейчас играет» ("Now Playing") app. It **finds the PC on
 
 Click the tray icon (or «Настройки…» in its menu) to open the settings window. Everything applies to the tablet right away:
 
-- **Track screen:** what's behind the cover — video from the music video, a gradient from the cover, a single color, or your own photo/video for all songs; background dimming; cover shadow.
+- **Track screen:** what's behind the cover — video from the music video, a gradient from the cover, a single color, or your own photo/video for all songs; background dimming; a soft glow behind the cover that pulses with the music (the server listens to the PC's output level); cover shadow.
 - **Clock:** your own photo, GIF or video, its dimming, night mode hours, when to turn the screen off.
 - **Weather** under the date, from [Open-Meteo](https://open-meteo.com) (no account): turn it on and pick your city.
 - **Tablet:** is it online, and installing the app over adb by USB or Wi-Fi. If adb isn't installed, the window offers to download Google's official platform-tools (about 7 MB).
