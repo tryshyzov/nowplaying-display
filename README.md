@@ -6,7 +6,7 @@ Turns an old Android tablet (tested on a Samsung Galaxy Tab 3 Lite, Android 4.2)
 
 - cover art, title, artist and a progress bar;
 - **synced lyrics** that highlight along with the music;
-- a background tinted to match the cover, or a looping video from the music video if Yandex Music has a video shot or a music video for the track;
+- a gradient background made from the cover's colors, or a looping video from the music video if Yandex Music has a video shot or a music video for the track;
 - a big clock when nothing is playing.
 
 <p align="center"><img src="docs/screenshots/icon.png" width="120" alt="NowPlaying icon"></p>
@@ -41,7 +41,7 @@ Player on the PC ──► Windows media overlay ──► server on the PC ─�
 Download two files from the [latest release](../../releases/latest):
 
 - `NowPlayingServer.exe` for the PC;
-- `NowPlaying-1.5.apk` for the tablet.
+- `NowPlaying-1.5.1.apk` for the tablet.
 
 ### 1. Server on the PC
 
@@ -70,7 +70,7 @@ Tray menu (right-click the icon):
 
 ### 2. App on the tablet
 
-Copy `NowPlaying-1.5.apk` to the tablet and install it. You'll need to allow installs from unknown sources in the tablet settings.
+Copy `NowPlaying-1.5.1.apk` to the tablet and install it. You'll need to allow installs from unknown sources in the tablet settings.
 
 Open the «Сейчас играет» ("Now Playing") app. It **finds the PC on its own** and starts showing your music. If it doesn't, long-press the screen and enter the address shown in the tray menu on the PC.
 
@@ -86,6 +86,7 @@ Every 6 hours the server checks the [latest release](../../releases/latest) on G
 | Swipe left | next track |
 | Swipe right | previous track |
 | Long press | enter the PC address manually |
+| Drag up/down on the cover | PC volume |
 | Drag up/down on the lyrics | scroll the lyrics; after 3 s they return to the current line |
 | Tap a line while the lyrics are scrolled | jump to that line (synced lyrics only) |
 | Drag or tap the progress bar | seek |
@@ -94,7 +95,7 @@ Other things the app does:
 
 - **The screen stays on**, the app shows on top of the lock screen and **starts automatically** when the tablet boots.
 - **When music is paused for more than a minute**, a clock appears. Once a minute it moves to a new spot to avoid screen burn-in.
-- **Brightness adjusts itself**: with music it follows the system setting, at night (11 pm to 8 am) 10%; on the clock 15%, at night 2%.
+- **Brightness adjusts itself**: with music it follows the system setting, at night (11 pm to 8 am) 10%; on the clock 15%, at night 2%. At night the clock and date turn dark red so they don't light up the room.
 - **Video behind the track:** if the track has a video shot in Yandex Music (a short loop cut from the music video, mostly newer tracks) or, failing that, a music video (its 10-second preview is used: the full video needs a Yandex account), the server finds it through the public Yandex Music search, no account needed, and the tablet plays it blurred and dimmed behind the cover and lyrics. Other tracks keep the cover-tinted background. It can be turned off in the tray menu.
 - **Clock background:** put a photo, GIF or video into the `Pictures\NowPlaying` folder on the PC (or open it from the tray menu). The newest file is used. The server prepares it for the tablet by itself: photos are downscaled, videos and GIFs are converted to MP4 up to 720p, without sound, up to 2 minutes. On the tablet the background fills the screen behind the clock, slightly dimmed; videos loop.
 - **After 30 minutes without music** the screen goes black. A tap wakes it for a minute, new music wakes it right away.
