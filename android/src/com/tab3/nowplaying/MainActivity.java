@@ -121,6 +121,21 @@ public class MainActivity extends Activity {
     private boolean volumeDrag;   // палец меняет громкость (по обложке)
     private int volume = -1, volumeStart;   // громкость ПК 0–100 (-1 — неизвестна)
     private long volumeSentAt;
+    private final java.util.concurrent.ExecutorService volumeExec = java.util.concurrent.Executors.newSingleThreadExecutor();
+    private volatile int volumeTarget = -1, volumeSent = -1;
+    private final Runnable sendVolume = new Runnable() {
+        public void run() {
+            int level = volumeTarget;
+            String s = server;
+            if (level < 0 || level == volumeSent || s == null) return;
+            try {
+                get("http://" + s + "/api/control/volume/" + level, 3000);
+                volumeSent = level;
+            } catch (Exception ignored) { }
+        }
+    };
+    private boolean forceBackground;   // пересчитать фон, даже если цвета те же (сменился режим)
+    private String appVersion;
     private FrameLayout coverFrame;
     private TextView volumeLabel;
     private final Runnable hideVolume = new Runnable() {
@@ -474,11 +489,14 @@ public class MainActivity extends Activity {
     }
 
     private String myVersion() {
-        try {
-            return getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
-        } catch (Exception e) {
-            return "0";
+        if (appVersion == null) {
+            try {
+                appVersion = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+            } catch (Exception e) {
+                return "0";
+            }
         }
+        return appVersion;
     }
 
     /** Сравнение версий вида 1.4.1: >0, если a новее b. */
@@ -699,7 +717,8 @@ public class MainActivity extends Activity {
         } catch (Exception e) {
             return;
         }
-        if (java.util.Arrays.equals(to, bgColors)) return;
+        if (!forceBackground && java.util.Arrays.equals(to, bgColors)) return;
+        forceBackground = false;
         final int[] from = bgColors.clone(), target = to;
         final ArgbEvaluator ev = new ArgbEvaluator();
         ValueAnimator a = ValueAnimator.ofFloat(0f, 1f);
@@ -856,7 +875,7 @@ public class MainActivity extends Activity {
             coverFrame.setBackgroundDrawable(sh ? shadowDrawable : null);
         }
         if (modeChanged && lastNow != null) {
-            bgColors = new int[]{0, 0, 0};   // чтобы градиент/цвет пересчитался
+            forceBackground = true;
             animateBackground(lastNow);
         }
     }
@@ -888,7 +907,9 @@ public class MainActivity extends Activity {
         long t = SystemClock.elapsedRealtime();
         if (force || t - volumeSentAt > 80) {
             volumeSentAt = t;
-            control("volume/" + level);
+            volumeTarget = level;
+            if (force) volumeSent = -1;   // последнее значение отправить в любом случае
+            volumeExec.execute(sendVolume);
         }
     }
 

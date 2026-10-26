@@ -369,14 +369,25 @@ async def h_now(request):
     s['track_media'] = TRACK_BG.info() if SETTINGS['track_bg'] == 'custom' else None
     s['ui'] = SETTINGS.ui()
     s['weather'] = WEATHER.info()
-    if request.remote not in ('127.0.0.1', '::1'):
-        LAST_CLIENT.update(ip=request.remote, at=time.time(), version=request.query.get('v'))
+    if request.remote not in ('127.0.0.1', '::1') and request.query.get('v'):
+        LAST_CLIENT.update(ip=request.remote, at=time.time(), version=request.query['v'][:20])
     s['apk_version'] = UPDATER.apk[0] if UPDATER.apk else None  # планшет сравнит со своей
-    try:
-        s['volume'], s['muted'] = await asyncio.get_running_loop().run_in_executor(None, volume.get)
-    except Exception:  # нет устройства вывода и т. п.
-        s['volume'], s['muted'] = None, False
+    s['volume'], s['muted'] = await current_volume()
     return jsonr(s)
+
+
+VOLUME_CACHE = {'at': 0.0, 'value': (None, False)}
+
+
+async def current_volume():
+    """Громкость ПК; читается не чаще раза в секунду — планшет спрашивает /api/now постоянно."""
+    if time.time() - VOLUME_CACHE['at'] > 1:
+        VOLUME_CACHE['at'] = time.time()
+        try:
+            VOLUME_CACHE['value'] = await asyncio.get_running_loop().run_in_executor(None, volume.get)
+        except Exception:  # нет устройства вывода и т. п.
+            VOLUME_CACHE['value'] = (None, False)
+    return VOLUME_CACHE['value']
 
 
 def control_session():
@@ -408,6 +419,7 @@ async def h_volume(request):
     except Exception as e:
         log.warning('volume: %s', e)
         raise web.HTTPServiceUnavailable()
+    VOLUME_CACHE.update(at=time.time(), value=(now, False))
     return jsonr({'volume': now})
 
 
@@ -467,14 +479,15 @@ SETTINGS.listeners.append(apply_settings)
 
 
 def tablet_apk():
-    """Файл приложения для установки по adb: из релиза (если скачан) или вложенный в программу."""
-    if UPDATER.apk and os.path.exists(UPDATER.apk[1]):
-        return UPDATER.apk[1]
+    """Файл приложения для установки по adb: самый новый из скачанного с релиза и вложенного
+    в программу (вложенный — той же версии, что программа)."""
     own = settings_web.resource('NowPlaying.apk')
-    if os.path.exists(own):
-        return own
     dev = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'android', 'NowPlaying.apk')
-    return dev if os.path.exists(dev) else None
+    bundled = own if os.path.exists(own) else (dev if os.path.exists(dev) else None)
+    released = UPDATER.apk[1] if UPDATER.apk and os.path.exists(UPDATER.apk[1]) else None
+    if released and (not bundled or updater.version_tuple(UPDATER.apk[0]) > updater.version_tuple(VERSION)):
+        return released
+    return bundled
 
 
 async def h_track_bg(request):

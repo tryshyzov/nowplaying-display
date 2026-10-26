@@ -72,7 +72,10 @@ class Settings:
                 except (TypeError, ValueError):
                     continue
             elif k in ('weather_lat', 'weather_lon'):
-                v = None if v is None else float(v)
+                try:
+                    v = None if v is None else float(v)
+                except (TypeError, ValueError):
+                    continue
             elif isinstance(d, str):
                 v = str(v)[:200]
             clean[k] = v

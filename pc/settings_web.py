@@ -22,10 +22,24 @@ def resource(name):
     return os.path.join(base, name)
 
 
-def local_only(handler):
+LOCAL_HOSTS = ('127.0.0.1', 'localhost', '[::1]')
+
+
+def local_only(handler, page=False):
+    """Только с этого компьютера и только со страницы настроек.
+
+    request.remote == 127.0.0.1 мало: любой сайт, открытый в браузере, тоже ходит
+    с 127.0.0.1. Поэтому ещё проверяем Host (защита от DNS rebinding) и требуем
+    заголовок X-NowPlaying: чужой сайт не может его поставить без разрешения CORS,
+    а CORS сервер не разрешает."""
     async def wrapped(request):
         if request.remote not in ('127.0.0.1', '::1'):
             raise web.HTTPForbidden(text='настройки меняются только на этом компьютере')
+        host = (request.host or '').rsplit(':', 1)[0].lower()
+        if host not in LOCAL_HOSTS:
+            raise web.HTTPForbidden(text='неверный адрес')
+        if not page and request.headers.get('X-NowPlaying') != '1':
+            raise web.HTTPForbidden(text='запрос не из окна настроек')
         return await handler(request)
     return wrapped
 
@@ -164,7 +178,7 @@ def routes(srv):
 
     return [
         web.static('/settings-ui', resource('settings_ui')),
-        web.get('/settings', local_only(page)),
+        web.get('/settings', local_only(page, page=True)),
         web.get('/api/settings', local_only(get_state)),
         web.post('/api/settings', local_only(post_settings)),
         web.post(r'/api/settings/upload/{kind:clock|track}', local_only(upload)),

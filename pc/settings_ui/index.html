@@ -337,7 +337,16 @@ function toast(text) {
   const t = $('#toast'); t.textContent = text; t.classList.add('show');
   clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove('show'), 1600);
 }
-async function api(path, opts) {
+// элемент с текстом: внешние строки (города, имена устройств, ошибки) — только как текст, не как разметка
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+}
+async function api(path, opts = {}) {
+  // без этого заголовка сервер не примет запрос (чужие сайты поставить его не могут)
+  opts.headers = Object.assign({ 'X-NowPlaying': '1' }, opts.headers || {});
   const r = await fetch(path, opts);
   if (!r.ok) throw new Error(await r.text());
   return r.json();
@@ -355,7 +364,11 @@ function mediaPreview(box, m) {
   if (!m) { box.innerHTML = 'нет файла'; return; }
   if (box.dataset.url === m.url) return;
   box.dataset.url = m.url;
-  box.innerHTML = m.type === 'video' ? `<video src="${m.url}" muted autoplay loop playsinline></video>` : `<img src="${m.url}" alt="">`;
+  box.textContent = '';
+  const media = el(m.type === 'video' ? 'video' : 'img');
+  media.src = m.url;
+  if (m.type === 'video') Object.assign(media, { muted: true, autoplay: true, loop: true, playsInline: true });
+  box.append(media);
 }
 
 function render(st) {
@@ -381,8 +394,11 @@ function render(st) {
   $('#nightHours').style.opacity = s.night ? 1 : .45;
   // погода
   if (document.activeElement !== $('#cityInput')) $('#cityInput').value = s.weather_city;
-  $('#wnow').innerHTML = st.weather_now ? `<span class="wnow">${st.weather_now.temp > 0 ? '+' : ''}${st.weather_now.temp}°</span>&nbsp; ${st.weather_now.text}` :
-    (s.weather_city ? (s.weather ? 'Загружаю…' : s.weather_city) : 'Выбери город');
+  const wn = $('#wnow');
+  wn.textContent = '';
+  if (st.weather_now) {
+    wn.append(el('span', 'wnow', (st.weather_now.temp > 0 ? '+' : '') + st.weather_now.temp + '°'), '\u00a0 ' + st.weather_now.text);
+  } else wn.textContent = s.weather_city ? (s.weather ? 'Загружаю…' : s.weather_city) : 'Выбери город';
   // планшет
   const t = st.tablet, online = t.seen !== null && t.seen < 15;
   $('#tabdot').classList.toggle('ok', online);
@@ -439,10 +455,11 @@ $('#cityInput').addEventListener('input', e => {
     const box = $('#cityResults');
     if (q.length < 2) { box.classList.remove('show'); return; }
     const list = await api('/api/settings/geocode?q=' + encodeURIComponent(q));
-    box.innerHTML = list.length ? '' : '<div class="note" style="padding:8px">Ничего не нашлось</div>';
+    box.textContent = '';
+    if (!list.length) { const n = el('div', 'note', 'Ничего не нашлось'); n.style.padding = '8px'; box.append(n); }
     for (const c of list) {
-      const b = document.createElement('button');
-      b.innerHTML = `${c.name} <small>${[c.region, c.country].filter(Boolean).join(', ')}</small>`;
+      const b = el('button');
+      b.append(c.name + ' ', el('small', null, [c.region, c.country].filter(Boolean).join(', ')));
       b.addEventListener('click', () => {
         box.classList.remove('show');
         $('#cityInput').value = c.name;
@@ -462,14 +479,14 @@ async function adbFind() {
   box.innerHTML = '<span class="note"><span class="spin"></span>Ищу планшет по USB и Wi-Fi…</span>';
   $('#adbHelp').hidden = true;
   let st;
-  try { st = await api('/api/settings/adb?wifi=1'); } catch (e) { box.innerHTML = `<span class="msg err">${e.message}</span>`; return; }
+  try { st = await api('/api/settings/adb?wifi=1'); } catch (e) { box.textContent = ''; box.append(el('span', 'msg err', e.message)); return; }
   if (!st.adb) {
     box.innerHTML = `<div class="note" style="margin-bottom:10px">Для установки нужен adb — официальная утилита Google для Android (около 7 МБ). Скачать её с dl.google.com?</div>
       <div class="btns"><button class="btn primary" id="adbGet">Скачать adb</button></div>`;
     $('#adbGet').onclick = async () => {
       $('#adbGet').disabled = true; $('#adbGet').innerHTML = '<span class="spin"></span>Скачиваю…';
       const r = await api('/api/settings/adb/download', { method: 'POST' });
-      if (r.ok) adbFind(); else box.innerHTML = `<span class="msg err">Не скачалось: ${r.error}</span>`;
+      if (r.ok) adbFind(); else { box.textContent = ''; box.append(el('span', 'msg err', 'Не скачалось: ' + r.error)); }
     };
     return;
   }
@@ -481,7 +498,9 @@ async function adbFind() {
   for (const d of devs) {
     const row = document.createElement('div'); row.className = 'dev';
     const wifi = d.serial.includes(':');
-    row.innerHTML = `<div class="t"><b>${d.model || 'Android-устройство'}</b><small>${wifi ? 'по Wi-Fi' : 'по USB'} · ${d.serial}</small></div>`;
+    const info = el('div', 't');
+    info.append(el('b', null, d.model || 'Android-устройство'), el('small', null, (wifi ? 'по Wi-Fi' : 'по USB') + ' · ' + d.serial));
+    row.append(info);
     if (d.state === 'device') {
       const b = document.createElement('button'); b.className = 'btn primary'; b.textContent = 'Установить';
       const msg = document.createElement('span'); msg.className = 'msg';
@@ -493,7 +512,7 @@ async function adbFind() {
       };
       row.append(msg, b);
     } else {
-      row.insertAdjacentHTML('beforeend', `<span class="msg err">${d.state === 'unauthorized' ? 'Разреши отладку на экране планшета' : 'Нет связи'}</span>`);
+      row.append(el('span', 'msg err', d.state === 'unauthorized' ? 'Разреши отладку на экране планшета' : 'Нет связи'));
     }
     list.append(row);
   }
