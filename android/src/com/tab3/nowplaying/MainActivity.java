@@ -107,6 +107,17 @@ public class MainActivity extends Activity {
     private long seekHoldUntil;   // после перемотки не верим старой позиции с сервера
     private boolean seekDragging; // палец тянет полоску прогресса
     private boolean lyricsDrag;   // палец листает текст
+    private boolean volumeDrag;   // палец меняет громкость (по обложке)
+    private int volume = -1, volumeStart;   // громкость ПК 0–100 (-1 — неизвестна)
+    private long volumeSentAt;
+    private FrameLayout coverFrame;
+    private TextView volumeLabel;
+    private final Runnable hideVolume = new Runnable() {
+        public void run() { volumeLabel.animate().alpha(0f).setDuration(400).start(); }
+    };
+    private View bgDim;
+    private Boolean nightShown;   // какой вид часов сейчас (ночной или нет)
+    private int[] bgColors = {0xff202020, 0xff0e0e0e, 0xff0e0e0e};
     private boolean connected;
 
     private final Random random = new Random();
@@ -180,20 +191,32 @@ public class MainActivity extends Activity {
 
     private void buildUi() {
         root = new FrameLayout(this);
-        background = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{bgColor, darker(bgColor)});
+        background = new GradientDrawable(GradientDrawable.Orientation.TL_BR, bgColors);
         root.setBackgroundDrawable(background);
         // жесты: тап — пауза/продолжить, свайп — следующий/предыдущий, долгое нажатие — адрес ПК
         final GestureDetector gestures = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
             @Override public boolean onDown(MotionEvent e) {
                 lyricsDrag = false;
+                volumeDrag = false;
                 lyrics.stopFling();
                 return true;
             }
             @Override public boolean onScroll(MotionEvent a, MotionEvent b, float dx, float dy) {
-                if (player.getVisibility() != View.VISIBLE || !lyrics.hasLyrics() || dark.getVisibility() == View.VISIBLE) return false;
+                if (player.getVisibility() != View.VISIBLE || dark.getVisibility() == View.VISIBLE) return false;
+                float tx = b.getX() - a.getX(), ty = b.getY() - a.getY();
+                if (!lyricsDrag && !volumeDrag && volume >= 0 && inside(coverFrame, a)
+                        && Math.abs(ty) >= dp(12) && Math.abs(ty) > Math.abs(tx)) {
+                    volumeDrag = true;     // вверх-вниз по обложке — громкость ПК
+                    volumeStart = volume;
+                }
+                if (volumeDrag) {
+                    // вся высота обложки — 100%
+                    setVolume(volumeStart + Math.round(-ty / cover.getHeight() * 100), false);
+                    return true;
+                }
+                if (!lyrics.hasLyrics()) return false;
                 if (!lyricsDrag) {
                     // листаем только вертикальным движением, начатым на тексте
-                    float tx = b.getX() - a.getX(), ty = b.getY() - a.getY();
                     if (Math.abs(ty) < dp(12) || Math.abs(ty) < Math.abs(tx) || !inside(lyrics, a)) return false;
                     lyricsDrag = true;
                 }
@@ -223,6 +246,7 @@ public class MainActivity extends Activity {
                     lyrics.flingByUser(vy);
                     return true;
                 }
+                if (volumeDrag) return true;
                 float dx = b.getX() - a.getX();
                 if (Math.abs(dx) > dp(100) && Math.abs(vx) > Math.abs(vy)) {
                     control(dx < 0 ? "next" : "prev");
@@ -235,6 +259,11 @@ public class MainActivity extends Activity {
         root.setOnTouchListener(new View.OnTouchListener() {
             public boolean onTouch(View v, MotionEvent e) {
                 if (dragSeek(e)) return true;
+                if (volumeDrag && (e.getActionMasked() == MotionEvent.ACTION_UP
+                        || e.getActionMasked() == MotionEvent.ACTION_CANCEL)) {
+                    setVolume(volume, true);   // последнее значение — точно отправить
+                    volumeDrag = false;
+                }
                 return gestures.onTouchEvent(e);
             }
         });
@@ -251,10 +280,20 @@ public class MainActivity extends Activity {
         // мягкая тень под обложкой: рамка шире обложки на SHADOW с каждой стороны,
         // а отрицательные отступы оставляют обложку на прежнем месте
         int sh = dp(SHADOW);
-        FrameLayout coverFrame = new FrameLayout(this);
+        coverFrame = new FrameLayout(this);
         coverFrame.setBackgroundDrawable(new BitmapDrawable(getResources(), coverShadow(dp(400), sh)));
         coverFrame.setPadding(sh, sh, sh, sh);
         coverFrame.addView(cover, new FrameLayout.LayoutParams(dp(400), dp(400)));
+        volumeLabel = text(22, true, 255);
+        volumeLabel.setShadowLayer(0, 0, 0, 0);
+        volumeLabel.setGravity(Gravity.CENTER);
+        GradientDrawable pill = new GradientDrawable();
+        pill.setColor(0xb3000000);
+        pill.setCornerRadius(dp(28));
+        volumeLabel.setBackgroundDrawable(pill);
+        volumeLabel.setPadding(dp(26), dp(12), dp(26), dp(12));
+        volumeLabel.setAlpha(0f);
+        coverFrame.addView(volumeLabel, new FrameLayout.LayoutParams(-2, -2, Gravity.CENTER));
         LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(dp(400) + 2 * sh, dp(400) + 2 * sh);
         cp.setMargins(-sh, -sh, -sh, -sh);
         player.addView(coverFrame, cp);
@@ -322,7 +361,7 @@ public class MainActivity extends Activity {
         bgVideo = new android.widget.VideoView(this);
         bgVideo.setVisibility(View.GONE);
         bgLayer.addView(bgVideo, new FrameLayout.LayoutParams(-1, -1, Gravity.CENTER));
-        View bgDim = new View(this);
+        bgDim = new View(this);
         bgDim.setBackgroundColor(0x59000000);   // ~35% затемнение, чтобы часы читались
         bgLayer.addView(bgDim, new FrameLayout.LayoutParams(-1, -1));
         bgLayer.setVisibility(View.GONE);
@@ -607,18 +646,37 @@ public class MainActivity extends Activity {
         return Color.HSVToColor(hsv);
     }
 
-    private void animateBackground(int to) {
-        if (to == bgColor) return;
-        ValueAnimator a = ValueAnimator.ofObject(new ArgbEvaluator(), bgColor, to);
+    /** Фон: градиент из трёх цветов обложки (сервер присылает colors), иначе — из одного цвета. */
+    private void animateBackground(JSONObject j) {
+        int[] to;
+        JSONArray cs = j.optJSONArray("colors");
+        try {
+            if (cs != null && cs.length() == 3) {
+                to = new int[]{Color.parseColor(cs.getString(0)), Color.parseColor(cs.getString(1)),
+                        Color.parseColor(cs.getString(2))};
+            } else {
+                int c = Color.parseColor(j.optString("color", "#202020"));
+                to = new int[]{c, darker(c), darker(c)};
+            }
+        } catch (Exception e) {
+            return;
+        }
+        if (java.util.Arrays.equals(to, bgColors)) return;
+        final int[] from = bgColors.clone(), target = to;
+        final ArgbEvaluator ev = new ArgbEvaluator();
+        ValueAnimator a = ValueAnimator.ofFloat(0f, 1f);
         a.setDuration(1200);
         a.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
             public void onAnimationUpdate(ValueAnimator va) {
-                int c = (Integer) va.getAnimatedValue();
-                background.setColors(new int[]{c, darker(c)});
+                float f = va.getAnimatedFraction();
+                int[] c = new int[3];
+                for (int i = 0; i < 3; i++) c[i] = (Integer) ev.evaluate(f, from[i], target[i]);
+                background.setColors(c);
             }
         });
         a.start();
-        bgColor = to;
+        bgColors = to;
+        bgColor = to[0];
     }
 
     private static final int SHADOW = 36;
@@ -687,6 +745,13 @@ public class MainActivity extends Activity {
         boolean night = isNight();
         boolean darkNow = idleNow && t - idleSince > DARK_AFTER_IDLE_MS && t > wakeUntil;
         dark.setVisibility(darkNow ? View.VISIBLE : View.GONE);
+        if (nightShown == null || nightShown != night) {
+            // ночью часы тёмно-красные (не слепят и не светят в комнату), фон затемнён сильнее
+            nightShown = night;
+            clock.setTextColor(night ? 0xffa3281e : 0xffffffff);
+            date.setTextColor(night ? 0x99a3281e : Color.argb(190, 255, 255, 255));
+            bgDim.setBackgroundColor(night ? 0xd9000000 : 0x59000000);
+        }
         syncBgVideo(idleNow && !darkNow);
         syncClip(!idleNow && !darkNow);
         float b;
@@ -724,6 +789,24 @@ public class MainActivity extends Activity {
                 try { get("http://" + s + "/api/control/" + action, 3000); } catch (Exception ignored) { }
             }
         });
+    }
+
+    /** Громкость ПК: подпись на обложке сразу, на ПК — не чаще раза в 80 мс (и всегда последнее). */
+    private void setVolume(int level, boolean force) {
+        level = Math.max(0, Math.min(100, level));
+        volume = level;
+        volumeLabel.setText("Громкость  " + level + "%");
+        // аниматоры на 4.2 при частых перезапусках сразу ставят конечную прозрачность —
+        // поэтому показываем сразу, а гасим один раз через секунду после последнего движения
+        volumeLabel.animate().cancel();
+        volumeLabel.setAlpha(1f);
+        ui.removeCallbacks(hideVolume);
+        ui.postDelayed(hideVolume, 1000);
+        long t = SystemClock.elapsedRealtime();
+        if (force || t - volumeSentAt > 80) {
+            volumeSentAt = t;
+            control("volume/" + level);
+        }
     }
 
     private void seekTo(long ms) {
@@ -956,6 +1039,7 @@ public class MainActivity extends Activity {
             if (nbg == null) clearBg();
             else loadBg(server, nbg, bg.optString("ext", "jpg"), bg.optString("type", "image"));
         }
+        if (!volumeDrag && !j.isNull("volume")) volume = j.optInt("volume", -1);
         String nclip = j.isNull("clip") ? null : j.optString("clip", null);
         if (nclip == null ? clipId != null : !nclip.equals(clipId)) {
             clipId = nclip;
@@ -991,7 +1075,7 @@ public class MainActivity extends Activity {
             String a = j.optString("artist");
             artist.setText(a);
             artist.setVisibility(a.length() > 0 ? View.VISIBLE : View.GONE);
-            try { animateBackground(Color.parseColor(j.optString("color", "#202020"))); } catch (Exception ignored) { }
+            animateBackground(j);
             lyrics.setLyrics(null, new ArrayList<String>(), false);
             lyrics.setVisibility(View.GONE);
             unsynced.setVisibility(View.GONE);
@@ -1002,7 +1086,7 @@ public class MainActivity extends Activity {
             trackId = null;
         } else {
             // цвет приходит чуть позже обложки — обновим, если поменялся
-            try { animateBackground(Color.parseColor(j.optString("color", "#202020"))); } catch (Exception ignored) { }
+            animateBackground(j);
         }
         int rev = j.optInt("art_rev", 0);
         if (id != null && j.optBoolean("has_art") && rev != artRev) {

@@ -9,6 +9,7 @@
 Всё хранится только в памяти.
 """
 import asyncio
+import colorsys
 import hashlib
 import io
 import json
@@ -34,9 +35,10 @@ from winrt.windows.storage.streams import Buffer, InputStreamOptions
 import background
 import clips
 import updater
+import volume
 import yandex
 
-VERSION = '1.5'      # версия программы для ПК (= тег релиза на GitHub)
+VERSION = '1.6'      # версия программы для ПК (= тег релиза на GitHub)
 HTTP_PORT = int(os.environ.get('NP_HTTP_PORT', '47801'))
 UDP_PORT = int(os.environ.get('NP_UDP_PORT', '47800'))
 POLL = 0.5           # секунд между опросами панели Windows
@@ -47,7 +49,7 @@ UA = 'NowPlaying-Tab3/1.0 (personal LAN display)'
 
 log = logging.getLogger('nowplaying')
 state = {'track_id': None, 'playing': False, 'title': '', 'artist': '', 'album': '', 'app': '',
-         'position_ms': 0, 'duration_ms': 0, 'measured_at': 0.0, 'color': '#202020', 'text_color': '#ffffff', 'art_rev': 0}
+         'position_ms': 0, 'duration_ms': 0, 'measured_at': 0.0, 'color': '#202020', 'colors': None, 'text_color': '#ffffff', 'art_rev': 0}
 art = {}       # track_id -> (jpeg bytes, цвет фона)
 lyrics = {}    # track_id -> dict
 lyrics_jobs = {}
@@ -115,14 +117,33 @@ def process_art(data):
     bg = (int(r * k), int(g * k), int(b * k))
     out = io.BytesIO()
     img.save(out, 'JPEG', quality=85)
-    return out.getvalue(), '#%02x%02x%02x' % bg
+    return out.getvalue(), '#%02x%02x%02x' % bg, gradient_colors(img)
 
 
-def set_art(tid, jpeg, color):
+def gradient_colors(img):
+    """Три цвета для градиента фона (слева сверху → по центру → справа снизу): в каждой
+    части обложки берём самый частый цвет и приглушаем его, чтобы белый текст читался."""
+    small = img.resize((48, 48))
+    parts = [(0, 0, 24, 24), (12, 12, 36, 36), (24, 24, 48, 48)]
+    colors = []
+    for box in parts:
+        q = small.crop(box).quantize(colors=4, method=Image.Quantize.MEDIANCUT)
+        pal = q.getpalette()
+        idx = max(q.getcolors(), key=lambda c: c[0])[1]
+        r, g, b = (x / 255 for x in pal[idx * 3: idx * 3 + 3])
+        h, sat, v = colorsys.rgb_to_hsv(r, g, b)
+        v = min(v, 0.42) * 0.9 + 0.04          # не светлее ~45%, но и не совсем чёрный
+        sat = min(1.0, sat * 1.1)
+        r, g, b = colorsys.hsv_to_rgb(h, sat, v)
+        colors.append('#%02x%02x%02x' % (int(r * 255), int(g * 255), int(b * 255)))
+    return colors
+
+
+def set_art(tid, jpeg, color, colors):
     for k in [k for k in art if k != tid]:
         art.pop(k)
-    art[tid] = (jpeg, color)
-    state['color'] = color
+    art[tid] = (jpeg, color, colors)
+    state.update(color=color, colors=colors)
     state['art_rev'] += 1
 
 
@@ -187,8 +208,8 @@ async def improve_art(app, tid, title, artist):
             async with app['http'].get(url) as r:
                 data = await r.read() if r.status == 200 else None
             if data and tid == state['track_id']:
-                jpeg, color = await asyncio.get_running_loop().run_in_executor(None, process_art, data)
-                set_art(tid, jpeg, color)
+                jpeg, color, colors = await asyncio.get_running_loop().run_in_executor(None, process_art, data)
+                set_art(tid, jpeg, color, colors)
                 art_attempts[tid] = 99  # больше не перезаписывать обложкой из Windows
         log.info('sharp art for %s — %s: %s', artist, title, url or 'no match')
     except Exception as e:
@@ -245,7 +266,7 @@ async def update_state(app, mgr):
 
     if tid != state['track_id']:
         log.info('track: %s — %s [%s]', artist, title, app_id)
-        state.update(color=art[tid][1] if tid in art else '#202020')
+        state.update(color=art[tid][1] if tid in art else '#202020', colors=art[tid][2] if tid in art else None)
         art_attempts.clear()
     # обложку пробуем несколько раз: Яндекс Музыка отдаёт её чуть позже названия
     if tid and tid not in art and props.thumbnail and art_attempts.get(tid, 0) < 6:
@@ -253,9 +274,9 @@ async def update_state(app, mgr):
         try:
             data = await read_thumbnail(props.thumbnail)
             if data:
-                jpeg, color = await asyncio.get_running_loop().run_in_executor(None, process_art, data)
+                jpeg, color, colors = await asyncio.get_running_loop().run_in_executor(None, process_art, data)
                 if tid not in art:  # iTunes мог успеть раньше
-                    set_art(tid, jpeg, color)
+                    set_art(tid, jpeg, color, colors)
         except Exception as e:
             log.warning('art: %s', e)
     if tid and artist and tid not in itunes_jobs:
@@ -343,6 +364,10 @@ async def h_now(request):
     s['bg'] = BG.info()
     s['clip'] = CLIPS.info(s['track_id'])
     s['apk_version'] = UPDATER.apk[0] if UPDATER.apk else None  # планшет сравнит со своей
+    try:
+        s['volume'], s['muted'] = await asyncio.get_running_loop().run_in_executor(None, volume.get)
+    except Exception:  # нет устройства вывода и т. п.
+        s['volume'], s['muted'] = None, False
     return jsonr(s)
 
 
@@ -366,6 +391,16 @@ async def h_seek(request):
         seek_hold.update(tid=state['track_id'], pos=ms, at=t, until=t + 3000)
         state.update(position_ms=ms, measured_at=t)
     return jsonr({'ok': bool(ok)})
+
+
+async def h_volume(request):
+    level = int(request.match_info['level'])
+    try:
+        now = await asyncio.get_running_loop().run_in_executor(None, volume.set_level, level)
+    except Exception as e:
+        log.warning('volume: %s', e)
+        raise web.HTTPServiceUnavailable()
+    return jsonr({'volume': now})
 
 
 async def h_control(request):
@@ -468,6 +503,7 @@ def create_app():
         web.get(r'/api/lyrics/{id:[0-9a-f]{12}}', h_lyrics),
         web.get(r'/api/control/{action:toggle|next|prev}', h_control),
         web.get(r'/api/control/seek/{ms:\d{1,9}}', h_seek),
+        web.get(r'/api/control/volume/{level:\d{1,3}}', h_volume),
         web.get(r'/bg/{id:[0-9a-f]{12}}.{ext:jpg|mp4}', h_bg),
         web.get(r'/clip/{id:[0-9a-f]{12}}.mp4', h_clip),
         web.get('/update/app.apk', h_apk),
