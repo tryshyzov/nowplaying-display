@@ -41,7 +41,7 @@ Player on the PC ──► Windows media overlay ──► server on the PC ─�
 Download two files from the [latest release](../../releases/latest):
 
 - `NowPlayingServer.exe` for the PC;
-- `NowPlaying-1.5.1.apk` for the tablet.
+- `NowPlaying-1.6.apk` for the tablet.
 
 ### 1. Server on the PC
 
@@ -61,22 +61,32 @@ Tray menu (right-click the icon):
 | Адрес для планшета (address for the tablet) | IP and port, if you need to enter it manually |
 | Запускать вместе с Windows (start with Windows) | turn autostart on or off |
 | Разрешить в брандмауэре… (allow in firewall…) | shown only if the ports are closed |
-| Видео за треком (из Яндекс Музыки) (video behind the track) | on/off for the video background |
-| Папка фона для часов… (clock background folder…) | opens the folder for the clock background |
+| Настройки… (settings…) | opens the settings window (also a click on the icon) |
 | Открыть журнал (open log) | `%LOCALAPPDATA%\NowPlaying\server.log` |
 | Обновить до … (update to …) | install a downloaded update now |
-| Обновляться автоматически (update automatically) | on/off for automatic updates |
 | Выход (exit) | stop the server |
 
 ### 2. App on the tablet
 
-Copy `NowPlaying-1.5.1.apk` to the tablet and install it. You'll need to allow installs from unknown sources in the tablet settings.
+Copy `NowPlaying-1.6.apk` to the tablet and install it. You'll need to allow installs from unknown sources in the tablet settings.
 
 Open the «Сейчас играет» ("Now Playing") app. It **finds the PC on its own** and starts showing your music. If it doesn't, long-press the screen and enter the address shown in the tray menu on the PC.
 
+### Settings window
+
+Click the tray icon (or «Настройки…» in its menu) to open the settings window. Everything applies to the tablet right away:
+
+- **Track screen:** what's behind the cover — video from the music video, a gradient from the cover, a single color, or your own photo/video for all songs; background dimming; cover shadow.
+- **Clock:** your own photo, GIF or video, its dimming, night mode hours, when to turn the screen off.
+- **Weather** under the date, from [Open-Meteo](https://open-meteo.com) (no account): turn it on and pick your city.
+- **Tablet:** is it online, and installing the app over adb by USB or Wi-Fi. If adb isn't installed, the window offers to download Google's official platform-tools (about 7 MB).
+- **Program:** automatic updates.
+
+Settings can only be changed on this PC.
+
 ### Updates
 
-Every 6 hours the server checks the [latest release](../../releases/latest) on GitHub. If there is a newer version, it downloads it, checks it against `SHA256SUMS.txt` from the same release, and installs itself once no music has been playing for 2 minutes (or right away from the tray menu). The new tablet app is downloaded by the server too and handed to the tablet over the local network, because Android 4.2 can't reach GitHub by itself. A rooted tablet installs it silently and restarts the app; otherwise the standard Android install dialog appears. Updates can be turned off in the tray menu.
+Every 6 hours the server checks the [latest release](../../releases/latest) on GitHub. If there is a newer version, it downloads it, checks it against `SHA256SUMS.txt` from the same release, and installs itself once no music has been playing for 2 minutes (or right away from the tray menu). The new tablet app is downloaded by the server too and handed to the tablet over the local network, because Android 4.2 can't reach GitHub by itself. A rooted tablet installs it silently and restarts the app; otherwise the standard Android install dialog appears. Updates can be turned off in the settings window.
 
 ## Tablet controls
 
@@ -96,8 +106,8 @@ Other things the app does:
 - **The screen stays on**, the app shows on top of the lock screen and **starts automatically** when the tablet boots.
 - **When music is paused for more than a minute**, a clock appears. Once a minute it moves to a new spot to avoid screen burn-in.
 - **Brightness adjusts itself**: with music it follows the system setting, at night (11 pm to 8 am) 10%; on the clock 15%, at night 2%. At night the clock and date turn dark red so they don't light up the room.
-- **Video behind the track:** if the track has a video shot in Yandex Music (a short loop cut from the music video, mostly newer tracks) or, failing that, a music video (its 10-second preview is used: the full video needs a Yandex account), the server finds it through the public Yandex Music search, no account needed, and the tablet plays it blurred and dimmed behind the cover and lyrics. Other tracks keep the cover-tinted background. It can be turned off in the tray menu.
-- **Clock background:** put a photo, GIF or video into the `Pictures\NowPlaying` folder on the PC (or open it from the tray menu). The newest file is used. The server prepares it for the tablet by itself: photos are downscaled, videos and GIFs are converted to MP4 up to 720p, without sound, up to 2 minutes. On the tablet the background fills the screen behind the clock, slightly dimmed; videos loop.
+- **Video behind the track:** if the track has a video shot in Yandex Music (a short loop cut from the music video, mostly newer tracks) or, failing that, a music video (its 10-second preview is used: the full video needs a Yandex account), the server finds it through the public Yandex Music search, no account needed, and the tablet plays it blurred and dimmed behind the cover and lyrics. Other tracks keep the cover gradient. What's behind the cover is chosen in the settings window.
+- **Clock background:** put a photo, GIF or video into the `Pictures\NowPlaying` folder on the PC (or pick a file in the settings window). The newest file is used. The server prepares it for the tablet by itself: photos are downscaled, videos and GIFs are converted to MP4 up to 720p, without sound, up to 2 minutes. On the tablet the background fills the screen behind the clock, slightly dimmed; videos loop.
 - **After 30 minutes without music** the screen goes black. A tap wakes it for a minute, new music wakes it right away.
 - **If only plain lyrics were found** (no timings), the app shows «текст без синхронизации» ("lyrics not synced") under the artist.
 

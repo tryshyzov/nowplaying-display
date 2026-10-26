@@ -1,0 +1,98 @@
+"""Настройки NowPlaying: %LOCALAPPDATA%\\NowPlaying\\settings.json.
+
+Их меняют окно настроек (/settings), меню значка и сервер. Часть, которая касается
+вида на планшете, отдаётся ему в /api/now (ключ ui) — планшет применяет её сразу.
+"""
+import json
+import os
+import threading
+
+DEFAULTS = {
+    # экран трека
+    'track_bg': 'video',      # video — видео из Яндекс Музыки, иначе градиент; gradient; color; custom — своё
+    'track_dim': 55,          # затемнение видео или своего фона за треком, %
+    'shadow': True,           # тень под обложкой
+    # экран часов
+    'clock_bg': True,         # показывать свой фон (самый новый файл из папки)
+    'clock_dim': 35,          # затемнение фона часов, %
+    'night': True,            # ночью красные тусклые часы
+    'night_from': 23,
+    'night_to': 8,
+    'dark_after_min': 30,     # через сколько минут без музыки гасить экран (0 — не гасить)
+    # погода под датой
+    'weather': False,
+    'weather_city': '',
+    'weather_lat': None,
+    'weather_lon': None,
+    # программа
+    'auto_update': True,
+}
+
+# то, что нужно планшету
+UI_KEYS = ('track_bg', 'track_dim', 'shadow', 'clock_dim', 'night', 'night_from', 'night_to', 'dark_after_min')
+
+
+class Settings:
+    def __init__(self, data_dir=None):
+        local = os.environ.get('LOCALAPPDATA') or os.path.expanduser('~')
+        self.path = os.path.join(data_dir or os.path.join(local, 'NowPlaying'), 'settings.json')
+        self.lock = threading.Lock()
+        self.data = dict(DEFAULTS)
+        self.listeners = []
+        try:
+            with open(self.path, encoding='utf-8') as f:
+                saved = json.load(f)
+            if saved.get('clips') is False and 'track_bg' not in saved:
+                saved['track_bg'] = 'gradient'   # из 1.5: «Видео за треком» было выключено
+            self.data.update({k: v for k, v in saved.items() if k in DEFAULTS})
+        except (OSError, ValueError):
+            pass
+
+    def __getitem__(self, key):
+        return self.data[key]
+
+    def get(self):
+        return dict(self.data)
+
+    def ui(self):
+        return {k: self.data[k] for k in UI_KEYS}
+
+    def update(self, changes):
+        """Применить изменения (лишние ключи и неверные типы отбрасываются). Возвращает новые настройки."""
+        clean = {}
+        for k, v in changes.items():
+            if k not in DEFAULTS:
+                continue
+            d = DEFAULTS[k]
+            if isinstance(d, bool):
+                v = bool(v)
+            elif isinstance(d, int) and not isinstance(d, bool):
+                try:
+                    v = int(v)
+                except (TypeError, ValueError):
+                    continue
+            elif k in ('weather_lat', 'weather_lon'):
+                v = None if v is None else float(v)
+            elif isinstance(d, str):
+                v = str(v)[:200]
+            clean[k] = v
+        if clean.get('track_bg', 'video') not in ('video', 'gradient', 'color', 'custom'):
+            clean.pop('track_bg')
+        for k, lo, hi in (('track_dim', 0, 90), ('clock_dim', 0, 90), ('night_from', 0, 23),
+                          ('night_to', 0, 23), ('dark_after_min', 0, 720)):
+            if k in clean:
+                clean[k] = max(lo, min(hi, clean[k]))
+        with self.lock:
+            self.data.update(clean)
+            snapshot = dict(self.data)
+            try:
+                os.makedirs(os.path.dirname(self.path), exist_ok=True)
+                tmp = self.path + '.tmp'
+                with open(tmp, 'w', encoding='utf-8') as f:
+                    json.dump(snapshot, f, ensure_ascii=False, indent=1)
+                os.replace(tmp, self.path)
+            except OSError:
+                pass
+        for fn in self.listeners:
+            fn(snapshot)
+        return snapshot

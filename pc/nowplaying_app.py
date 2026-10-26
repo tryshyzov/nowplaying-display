@@ -5,7 +5,7 @@
     администратора; если задание создать нельзя — запасной вариант HKCU\\...\\Run);
   * если нет правил брандмауэра, просит разрешение (окно UAC) открыть
     TCP 47801 и UDP 47800 — только для локальной сети.
-В меню значка: что играет, адрес сервера, автозапуск, журнал, выход.
+В меню значка: что играет, адрес сервера, окно настроек, автозапуск, журнал, обновление, выход.
 """
 import json
 import os
@@ -252,27 +252,19 @@ def now_playing_text():
     return ('▶ ' if st.get('playing') else '❚❚ ') + text[:90]
 
 
-# ---------- настройки (settings.json в DATA_DIR) ----------
+# ---------- окно настроек ----------
 
-SETTINGS_FILE = os.path.join(DATA_DIR, 'settings.json')
-
-
-def load_settings():
-    try:
-        with open(SETTINGS_FILE, encoding='utf-8') as f:
-            return json.load(f)
-    except (OSError, ValueError):
-        return {}
-
-
-def save_settings(**changes):
-    data = load_settings()
-    data.update(changes)
-    try:
-        with open(SETTINGS_FILE, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False)
-    except OSError:
-        pass
+def open_settings():
+    """Страница настроек в отдельном окне Edge без адресной строки (как обычная программа);
+    если Edge нет — в браузере по умолчанию."""
+    url = f'http://127.0.0.1:{server.HTTP_PORT}/settings'
+    for base in (os.environ.get('ProgramFiles(x86)'), os.environ.get('ProgramFiles'), os.environ.get('LOCALAPPDATA')):
+        edge = os.path.join(base or '', 'Microsoft', 'Edge', 'Application', 'msedge.exe')
+        if base and os.path.exists(edge):
+            subprocess.Popen([edge, f'--app={url}', '--window-size=1000,780'], close_fds=True)
+            return
+    import webbrowser
+    webbrowser.open(url)
 
 
 # ---------- обновление (новый exe скачивает updater.py) ----------
@@ -320,9 +312,6 @@ def remove_old_exe():
 def main():
     os.makedirs(DATA_DIR, exist_ok=True)
     log_path = server.setup_logging(DATA_DIR)
-    settings = load_settings()
-    server.CLIPS.enabled = settings.get('clips', True)
-    server.UPDATER.enabled = settings.get('auto_update', True)
     after_update = AFTER_UPDATE in sys.argv
     # любые необработанные ошибки — в журнал, иначе без консоли программа «молча» пропадает
     import logging
@@ -378,16 +367,8 @@ def main():
         if log_path and os.path.exists(log_path):
             os.startfile(log_path)
 
-    def open_bg_folder(icon, item):
-        os.startfile(server.BG.src_dir)
-
-    def toggle_clips(icon, item):
-        server.CLIPS.enabled = not server.CLIPS.enabled
-        save_settings(clips=server.CLIPS.enabled)
-
-    def toggle_auto_update(icon, item):
-        server.UPDATER.enabled = not server.UPDATER.enabled
-        save_settings(auto_update=server.UPDATER.enabled)
+    def show_settings(icon, item):
+        open_settings()
 
     def update_now(icon, item):
         if apply_update():
@@ -408,18 +389,14 @@ def main():
         pystray.MenuItem(lambda item: now_playing_text(), None, enabled=False),
         pystray.MenuItem(lambda item: f'Адрес для планшета: {local_ip()}:{server.HTTP_PORT}', None, enabled=False),
         pystray.Menu.SEPARATOR,
+        pystray.MenuItem('Настройки…', show_settings, default=True),   # и по клику на значок
         pystray.MenuItem('Запускать вместе с Windows', toggle_autostart, checked=lambda item: autostart_enabled()),
         pystray.MenuItem('Разрешить в брандмауэре…', fix_firewall, visible=lambda item: not fw['ok']),
-        pystray.MenuItem('Видео за треком (из Яндекс Музыки)', toggle_clips,
-                         checked=lambda item: server.CLIPS.enabled),
-        pystray.MenuItem('Папка фона для часов…', open_bg_folder),
         pystray.MenuItem('Открыть журнал', open_log),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem(lambda item: version_text(), None, enabled=False),
         pystray.MenuItem(lambda item: f'Обновить до {server.UPDATER.latest}', update_now,
                          visible=lambda item: bool(server.UPDATER.exe)),
-        pystray.MenuItem('Обновляться автоматически', toggle_auto_update,
-                         checked=lambda item: server.UPDATER.enabled),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem('Выход', quit_app),
     )

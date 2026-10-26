@@ -34,11 +34,14 @@ from winrt.windows.storage.streams import Buffer, InputStreamOptions
 
 import background
 import clips
+import settings
+import settings_web
+import weather
 import updater
 import volume
 import yandex
 
-VERSION = '1.5.1'     # версия программы для ПК (= тег релиза на GitHub)
+VERSION = '1.6'       # версия программы для ПК (= тег релиза на GitHub)
 HTTP_PORT = int(os.environ.get('NP_HTTP_PORT', '47801'))
 UDP_PORT = int(os.environ.get('NP_UDP_PORT', '47800'))
 POLL = 0.5           # секунд между опросами панели Windows
@@ -361,8 +364,13 @@ async def h_now(request):
     s['server_time_ms'] = int(now_ms())
     s['has_art'] = s['track_id'] in art
     s['lyrics_ready'] = s['track_id'] in lyrics
-    s['bg'] = BG.info()
-    s['clip'] = CLIPS.info(s['track_id'])
+    s['bg'] = BG.info() if SETTINGS['clock_bg'] else None
+    s['clip'] = CLIPS.info(s['track_id'])          # видео из Яндекс Музыки (если включено)
+    s['track_media'] = TRACK_BG.info() if SETTINGS['track_bg'] == 'custom' else None
+    s['ui'] = SETTINGS.ui()
+    s['weather'] = WEATHER.info()
+    if request.remote not in ('127.0.0.1', '::1'):
+        LAST_CLIENT.update(ip=request.remote, at=time.time(), version=request.query.get('v'))
     s['apk_version'] = UPDATER.apk[0] if UPDATER.apk else None  # планшет сравнит со своей
     try:
         s['volume'], s['muted'] = await asyncio.get_running_loop().run_in_executor(None, volume.get)
@@ -438,9 +446,42 @@ class Discovery(asyncio.DatagramProtocol):
             self.transport.sendto(reply, addr)
 
 
+SETTINGS = settings.Settings()
 BG = background.Background()
+# своё фото или видео за экраном трека — из подпапки track рядом с фоном часов
+TRACK_BG = background.Background(src_dir=os.path.join(background.default_dir(), 'track'),
+                                 cache_dir=os.path.join(os.path.dirname(BG.cache_dir), 'bg_track'))
 CLIPS = clips.Clips()
 UPDATER = updater.Updater(VERSION)
+WEATHER = weather.Weather(SETTINGS)
+LAST_CLIENT = {}   # последний планшет, который спрашивал /api/now: ip, время, версия приложения
+
+
+def apply_settings(s):
+    CLIPS.enabled = s['track_bg'] == 'video'
+    UPDATER.enabled = s['auto_update']
+
+
+apply_settings(SETTINGS.get())
+SETTINGS.listeners.append(apply_settings)
+
+
+def tablet_apk():
+    """Файл приложения для установки по adb: из релиза (если скачан) или вложенный в программу."""
+    if UPDATER.apk and os.path.exists(UPDATER.apk[1]):
+        return UPDATER.apk[1]
+    own = settings_web.resource('NowPlaying.apk')
+    if os.path.exists(own):
+        return own
+    dev = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'android', 'NowPlaying.apk')
+    return dev if os.path.exists(dev) else None
+
+
+async def h_track_bg(request):
+    c = TRACK_BG.current
+    if not c or c['id'] != request.match_info['id'] or c['ext'] != request.match_info['ext']:
+        raise web.HTTPNotFound()
+    return web.FileResponse(c['path'], headers={'Cache-Control': 'max-age=86400'})
 
 
 async def h_apk(request):
@@ -470,6 +511,8 @@ async def on_startup(app):
                                         connector=aiohttp.TCPConnector(ssl=ctx))
     app['poll'] = asyncio.create_task(poll_loop(app))
     app['bg'] = asyncio.create_task(BG.watch())
+    app['track_bg'] = asyncio.create_task(TRACK_BG.watch())
+    app['weather'] = asyncio.create_task(WEATHER.watch(app['http']))
     app['update'] = asyncio.create_task(UPDATER.watch(app['http']))
     loop = asyncio.get_running_loop()
     app['udp'], _ = await loop.create_datagram_endpoint(Discovery, local_addr=('0.0.0.0', UDP_PORT))
@@ -478,6 +521,8 @@ async def on_startup(app):
 async def on_cleanup(app):
     app['poll'].cancel()
     app['bg'].cancel()
+    app['track_bg'].cancel()
+    app['weather'].cancel()
     app['update'].cancel()
     app['udp'].close()
     await app['http'].close()
@@ -507,6 +552,8 @@ def create_app():
         web.get(r'/bg/{id:[0-9a-f]{12}}.{ext:jpg|mp4}', h_bg),
         web.get(r'/clip/{id:[0-9a-f]{12}}.mp4', h_clip),
         web.get('/update/app.apk', h_apk),
+        web.get(r'/bg-track/{id:[0-9a-f]{12}}.{ext:jpg|mp4}', h_track_bg),
+        *settings_web.routes(sys.modules[__name__]),
         web.get('/health', lambda r: web.Response(text='ok')),
     ])
     app.on_startup.append(on_startup)

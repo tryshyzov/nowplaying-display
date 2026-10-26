@@ -1,4 +1,5 @@
-"""Фон для экрана часов: самый новый файл из папки на ПК -> формат, который тянет Android 4.2.
+"""Свой фон (для часов, а второй экземпляр — для экрана трека): самый новый файл из папки
+на ПК -> формат, который тянет Android 4.2.
 
 Фото (jpg/png/webp/bmp, а также гифка из одного кадра) -> JPEG до 1280 px.
 Видео и анимированные гифки -> MP4 H.264 baseline, до 720p, 30 к/с, без звука, до 2 минут.
@@ -77,6 +78,7 @@ class Background:
         try:
             result = await asyncio.get_running_loop().run_in_executor(None, self.prepare, path, bid)
             if result:
+                result['source'] = os.path.basename(path)
                 self.current = result
                 self.cleanup(bid)
                 log.info('background: %s -> %s', os.path.basename(path), result['type'])

@@ -1,0 +1,516 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Настройки NowPlaying</title>
+<style>
+@font-face { font-family: 'Inter'; font-weight: 500; src: url('/settings-ui/fonts/Inter-Medium.ttf'); }
+@font-face { font-family: 'Inter Display'; font-weight: 600; src: url('/settings-ui/fonts/Inter-DisplaySemiBold.ttf'); }
+@font-face { font-family: 'Inter Display'; font-weight: 700; src: url('/settings-ui/fonts/Inter-DisplayBold.ttf'); }
+
+:root {
+  --bg: #0f0f10;
+  --side: #151516;
+  --card: #1b1b1d;
+  --card-hi: #232326;
+  --line: rgba(255,255,255,.07);
+  --text: #f4f4f5;
+  --dim: rgba(244,244,245,.56);
+  --faint: rgba(244,244,245,.32);
+  --accent: #8c9cff;
+  --accent-soft: rgba(140,156,255,.16);
+  --ok: #6fd39a;
+  --warn: #f2b45a;
+  --radius: 14px;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+  font: 500 14px/1.45 'Inter', 'Segoe UI Variable Text', 'Segoe UI', sans-serif; -webkit-font-smoothing: antialiased; }
+button, input, select { font: inherit; color: inherit; }
+
+.app { display: grid; grid-template-columns: 216px 1fr; height: 100%; }
+aside { background: var(--side); border-right: 1px solid var(--line); padding: 28px 14px; display: flex; flex-direction: column; gap: 2px; }
+.brand { display: flex; align-items: center; gap: 10px; padding: 0 10px 26px; }
+.brand img { width: 34px; height: 34px; border-radius: 9px; }
+.brand b { font: 700 16px 'Inter Display', sans-serif; letter-spacing: -.01em; }
+.brand span { display: block; color: var(--faint); font-size: 12px; }
+nav a { display: flex; align-items: center; gap: 11px; padding: 9px 12px; border-radius: 9px; color: var(--dim);
+  text-decoration: none; cursor: pointer; transition: background .15s, color .15s; }
+nav a svg { width: 18px; height: 18px; flex: none; opacity: .8; }
+nav a:hover { background: rgba(255,255,255,.04); color: var(--text); }
+nav a.on { background: var(--accent-soft); color: var(--text); }
+nav a.on svg { color: var(--accent); opacity: 1; }
+.side-foot { margin-top: auto; padding: 0 12px; color: var(--faint); font-size: 12px; }
+.side-foot .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--faint); margin-right: 6px; vertical-align: 1px; }
+.side-foot .dot.ok { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+
+main { overflow-y: auto; padding: 34px 40px 60px; scroll-behavior: smooth; }
+section { max-width: 680px; margin-bottom: 44px; scroll-margin-top: 24px; }
+h1 { font: 700 26px/1.2 'Inter Display', sans-serif; letter-spacing: -.02em; margin: 0 0 4px; }
+.lead { color: var(--dim); margin: 0 0 18px; }
+.card { background: var(--card); border-radius: var(--radius); border: 1px solid var(--line); }
+.row { display: flex; align-items: center; gap: 20px; padding: 15px 18px; }
+.row + .row { border-top: 1px solid var(--line); }
+.row .t { flex: 1; min-width: 0; }
+.row .t b { display: block; font-weight: 500; }
+.row .t small { display: block; color: var(--dim); font-size: 12.5px; margin-top: 1px; }
+.row.sub { padding-top: 0; }
+.row.stack { flex-direction: column; align-items: stretch; gap: 14px; }
+
+/* переключатель */
+.sw { position: relative; width: 42px; height: 24px; flex: none; }
+.sw input { opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; position: absolute; z-index: 1; }
+.sw i { position: absolute; inset: 0; border-radius: 12px; background: #3a3a3e; transition: background .2s; }
+.sw i::after { content: ''; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%;
+  background: #fff; transition: transform .2s cubic-bezier(.3,.7,.4,1); box-shadow: 0 1px 3px rgba(0,0,0,.35); }
+.sw input:checked + i { background: var(--accent); }
+.sw input:checked + i::after { transform: translateX(18px); }
+.sw input:focus-visible + i { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ползунок */
+.range { display: flex; align-items: center; gap: 12px; width: 230px; flex: none; }
+.range output { width: 38px; text-align: right; color: var(--dim); font-variant-numeric: tabular-nums; }
+input[type=range] { flex: 1; -webkit-appearance: none; appearance: none; height: 4px; border-radius: 2px; cursor: pointer;
+  background: linear-gradient(to right, var(--accent) var(--p, 50%), #3a3a3e var(--p, 50%)); }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: #fff;
+  box-shadow: 0 1px 4px rgba(0,0,0,.4); }
+
+select { min-width: 84px; padding-right: 26px; }
+select, .field { background: var(--card-hi); border: 1px solid var(--line); border-radius: 9px; padding: 7px 10px; outline: none; }
+select:focus, .field:focus { border-color: var(--accent); }
+select option { background: #222; }
+
+.btn { background: var(--card-hi); border: 1px solid var(--line); border-radius: 9px; padding: 7px 14px; cursor: pointer;
+  white-space: nowrap; transition: background .15s, border-color .15s; }
+.btn:hover { background: #2c2c30; }
+.btn.primary { background: var(--accent); border-color: transparent; color: #0e1030; }
+.btn.primary:hover { background: #a0aeff; }
+.btn:disabled { opacity: .45; cursor: default; }
+.btns { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* выбор фона за обложкой */
+.modes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.mode { background: var(--card-hi); border: 1.5px solid transparent; border-radius: 12px; padding: 8px 8px 10px; cursor: pointer;
+  text-align: left; transition: border-color .15s, background .15s; }
+.mode:hover { background: #29292d; }
+.mode.on { border-color: var(--accent); }
+.mode b { display: block; font-weight: 500; margin: 8px 2px 0; font-size: 13px; }
+.mode small { display: block; color: var(--dim); font-size: 11.5px; margin: 1px 2px 0; line-height: 1.3; }
+.thumb { position: relative; aspect-ratio: 1024 / 600; border-radius: 7px; overflow: hidden; }
+.thumb .cv { position: absolute; left: 6%; top: 17%; width: 39%; height: 66%; border-radius: 3px;
+  background: linear-gradient(135deg, #e86a5a, #6b3fa0); box-shadow: 0 3px 8px rgba(0,0,0,.45); }
+.thumb .ln { position: absolute; left: 52%; height: 6%; border-radius: 2px; background: rgba(255,255,255,.85); }
+.thumb .ln.d { background: rgba(255,255,255,.35); }
+.t-video { background: radial-gradient(circle at 30% 40%, #4b5d7a, transparent 55%), radial-gradient(circle at 75% 70%, #6c4a3a, transparent 60%), #1d1f26; }
+.t-video::before { content: ''; position: absolute; inset: -10%; background: inherit; filter: blur(6px); }
+.t-video::after { content: ''; position: absolute; right: 8%; bottom: 10%; border-left: 9px solid rgba(255,255,255,.8);
+  border-top: 6px solid transparent; border-bottom: 6px solid transparent; }
+.t-gradient { background: linear-gradient(135deg, #6a2f3c, #3a2350 55%, #1c2a4a); }
+.t-color { background: #3b2734; }
+.t-custom { background: repeating-linear-gradient(45deg, #26262a 0 6px, #2c2c31 6px 12px); }
+.t-custom.has { background-size: cover; background-position: center; }
+
+/* превью своего фона */
+.media { display: flex; gap: 16px; align-items: center; }
+.preview { width: 176px; aspect-ratio: 1024 / 600; border-radius: 9px; overflow: hidden; background: #111; flex: none;
+  display: grid; place-items: center; color: var(--faint); font-size: 12px; border: 1px solid var(--line); }
+.preview img, .preview video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.media .info { flex: 1; min-width: 0; }
+.media .info b { display: block; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.media .info small { display: block; color: var(--dim); font-size: 12.5px; margin: 2px 0 10px; }
+.drop { border: 1.5px dashed rgba(255,255,255,.18); border-radius: 12px; padding: 18px; text-align: center; color: var(--dim);
+  transition: border-color .15s, background .15s; }
+.drop.over { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+
+.hours { display: flex; align-items: center; gap: 8px; color: var(--dim); }
+
+/* город */
+.city { position: relative; width: 300px; flex: none; }
+.city .field { width: 100%; }
+.results { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 5; background: #26262a; border: 1px solid var(--line);
+  border-radius: 10px; padding: 4px; box-shadow: 0 12px 30px rgba(0,0,0,.5); display: none; }
+.results.show { display: block; }
+.results button { display: block; width: 100%; text-align: left; background: none; border: 0; border-radius: 7px; padding: 7px 9px; cursor: pointer; }
+.results button:hover { background: rgba(255,255,255,.06); }
+.results button small { color: var(--dim); }
+.wnow { font: 600 15px 'Inter Display', sans-serif; }
+
+/* планшет */
+.status { display: flex; align-items: center; gap: 12px; }
+.status .big { width: 40px; height: 40px; border-radius: 10px; background: var(--card-hi); display: grid; place-items: center; flex: none; }
+.status .big svg { width: 22px; height: 22px; color: var(--dim); }
+.status.ok .big svg { color: var(--ok); }
+.devs { display: flex; flex-direction: column; gap: 8px; }
+.dev { display: flex; align-items: center; gap: 12px; background: var(--card-hi); border-radius: 10px; padding: 10px 12px; }
+.dev .t { flex: 1; }
+.dev .t small { color: var(--dim); display: block; font-size: 12px; }
+.note { color: var(--dim); font-size: 12.5px; }
+.note ol { margin: 6px 0 0; padding-left: 18px; }
+.msg { font-size: 12.5px; }
+.msg.ok { color: var(--ok); }
+.msg.err { color: #ff8a8a; }
+.spin { display: inline-block; width: 12px; height: 12px; border: 2px solid rgba(255,255,255,.25); border-top-color: #fff; border-radius: 50%;
+  animation: r .8s linear infinite; vertical-align: -1px; margin-right: 6px; }
+@keyframes r { to { transform: rotate(1turn); } }
+
+.toast { position: fixed; right: 22px; bottom: 20px; background: #2a2a2e; border: 1px solid var(--line); border-radius: 10px; padding: 9px 14px;
+  color: var(--dim); font-size: 13px; opacity: 0; transform: translateY(6px); transition: opacity .2s, transform .2s; pointer-events: none; }
+.toast.show { opacity: 1; transform: none; }
+
+@media (max-width: 760px) {
+  .app { grid-template-columns: 1fr; }
+  aside { display: none; }
+  main { padding: 24px 16px 50px; }
+  .modes { grid-template-columns: repeat(2, 1fr); }
+  .row { flex-wrap: wrap; }
+  .range, .city { width: 100%; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside>
+    <div class="brand">
+      <img src="/settings-ui/icon.png" alt="">
+      <div><b>NowPlaying</b><span id="ver">версия —</span></div>
+    </div>
+    <nav>
+      <a href="#track" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="5" width="8" height="8" rx="1.5"/><path d="M14 7h7M14 11h5M3 17h18"/></svg>Экран трека</a>
+      <a href="#clock"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>Часы</a>
+      <a href="#weather"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M7 18h10a4 4 0 0 0 .5-7.97A6 6 0 0 0 6.1 11.3 3.4 3.4 0 0 0 7 18Z"/></svg>Погода</a>
+      <a href="#tablet"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="2.5" y="5" width="19" height="14" rx="2"/><path d="M19 12h.01"/></svg>Планшет</a>
+      <a href="#app"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>Программа</a>
+    </nav>
+    <div class="side-foot"><span class="dot" id="tabdot"></span><span id="tabline">планшет не на связи</span></div>
+  </aside>
+
+  <main id="main">
+    <section id="track">
+      <h1>Экран трека</h1>
+      <p class="lead">Что видно за обложкой и текстом, пока играет музыка. Всё применяется сразу — смотри на планшет.</p>
+      <div class="card">
+        <div class="row stack">
+          <div class="t"><b>Фон за обложкой</b></div>
+          <div class="modes" id="modes">
+            <button class="mode" data-mode="video"><div class="thumb t-video"><i class="cv"></i><i class="ln" style="top:38%;width:30%"></i><i class="ln d" style="top:50%;width:38%"></i><i class="ln d" style="top:62%;width:26%"></i></div><b>Видео из клипа</b><small>Из Яндекс Музыки, если есть. Иначе градиент</small></button>
+            <button class="mode" data-mode="gradient"><div class="thumb t-gradient"><i class="cv"></i><i class="ln" style="top:38%;width:30%"></i><i class="ln d" style="top:50%;width:38%"></i><i class="ln d" style="top:62%;width:26%"></i></div><b>Градиент</b><small>Из трёх цветов обложки</small></button>
+            <button class="mode" data-mode="color"><div class="thumb t-color"><i class="cv"></i><i class="ln" style="top:38%;width:30%"></i><i class="ln d" style="top:50%;width:38%"></i><i class="ln d" style="top:62%;width:26%"></i></div><b>Цвет</b><small>Один приглушённый цвет обложки</small></button>
+            <button class="mode" data-mode="custom"><div class="thumb t-custom" id="customThumb"><i class="cv"></i><i class="ln" style="top:38%;width:30%"></i><i class="ln d" style="top:50%;width:38%"></i><i class="ln d" style="top:62%;width:26%"></i></div><b>Своё</b><small>Твоё фото или видео для всех песен</small></button>
+          </div>
+        </div>
+        <div class="row stack" id="trackMediaRow" hidden>
+          <div class="media">
+            <div class="preview" id="trackPreview">нет файла</div>
+            <div class="info">
+              <b id="trackName">Файл не выбран</b>
+              <small id="trackHint">Фото, гифка или видео. Видео до 2 минут, без звука, по кругу.</small>
+              <div class="btns">
+                <button class="btn primary" data-pick="track">Выбрать файл…</button>
+                <button class="btn" data-clear="track">Убрать</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="row">
+          <div class="t"><b>Затемнение фона</b><small>Чтобы текст читался на видео и фото</small></div>
+          <div class="range"><input type="range" min="0" max="90" step="5" data-key="track_dim"><output></output></div>
+        </div>
+        <div class="row">
+          <div class="t"><b>Тень под обложкой</b><small>Мягкая тень, обложка будто чуть приподнята</small></div>
+          <label class="sw"><input type="checkbox" data-key="shadow"><i></i></label>
+        </div>
+      </div>
+    </section>
+
+    <section id="clock">
+      <h1>Часы</h1>
+      <p class="lead">Экран, когда музыка не играет больше минуты.</p>
+      <div class="card">
+        <div class="row">
+          <div class="t"><b>Свой фон</b><small>Фото, гифка или зацикленное видео под часами</small></div>
+          <label class="sw"><input type="checkbox" data-key="clock_bg"><i></i></label>
+        </div>
+        <div class="row stack sub" id="clockMediaRow">
+          <div class="media">
+            <div class="preview" id="clockPreview">нет файла</div>
+            <div class="info">
+              <b id="clockName">Файл не выбран</b>
+              <small id="clockHint">Берётся самый новый файл из папки фона.</small>
+              <div class="btns">
+                <button class="btn primary" data-pick="clock">Выбрать файл…</button>
+                <button class="btn" data-open="clock">Открыть папку</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="row">
+          <div class="t"><b>Затемнение фона</b><small>Чтобы цифры не терялись на ярком фоне</small></div>
+          <div class="range"><input type="range" min="0" max="90" step="5" data-key="clock_dim"><output></output></div>
+        </div>
+        <div class="row">
+          <div class="t"><b>Ночной режим</b><small>Тёмно-красные тусклые цифры, фон почти не виден</small></div>
+          <div class="hours" id="nightHours">
+            <span>с</span><select data-key="night_from"></select><span>до</span><select data-key="night_to"></select>
+          </div>
+          <label class="sw"><input type="checkbox" data-key="night"><i></i></label>
+        </div>
+        <div class="row">
+          <div class="t"><b>Гасить экран без музыки</b><small>Тап по экрану будит его на минуту</small></div>
+          <select data-key="dark_after_min" style="width:170px">
+            <option value="0">никогда</option><option value="10">через 10 минут</option><option value="30">через 30 минут</option>
+            <option value="60">через час</option><option value="120">через 2 часа</option>
+          </select>
+        </div>
+      </div>
+    </section>
+
+    <section id="weather">
+      <h1>Погода</h1>
+      <p class="lead">Температура и небо под датой на экране часов. Данные — Open-Meteo, без регистрации.</p>
+      <div class="card">
+        <div class="row">
+          <div class="t"><b>Показывать погоду</b><small id="wnow">Выбери город</small></div>
+          <label class="sw"><input type="checkbox" data-key="weather"><i></i></label>
+        </div>
+        <div class="row">
+          <div class="t"><b>Город</b><small>Начни вводить название</small></div>
+          <div class="city">
+            <input class="field" id="cityInput" placeholder="Например, Москва" autocomplete="off">
+            <div class="results" id="cityResults"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="tablet">
+      <h1>Планшет</h1>
+      <p class="lead">Установка и обновление приложения «Сейчас играет».</p>
+      <div class="card">
+        <div class="row">
+          <div class="status" id="tabStatus">
+            <div class="big"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="2.5" y="5" width="19" height="14" rx="2"/><path d="M19 12h.01"/></svg></div>
+            <div class="t"><b id="tabTitle">Планшет не на связи</b><small id="tabSub">Открой «Сейчас играет» на планшете в той же сети Wi-Fi</small></div>
+          </div>
+        </div>
+        <div class="row stack">
+          <div class="t"><b>Установить приложение</b><small>Через adb: по USB-кабелю или по Wi-Fi, если на планшете включена отладка по сети</small></div>
+          <div id="adbBox">
+            <div class="btns"><button class="btn primary" id="adbFind">Найти планшет</button></div>
+          </div>
+          <div class="note" id="adbHelp" hidden>
+            Планшет не найден. Чтобы поставить по кабелю:
+            <ol>
+              <li>На планшете: Настройки → Об устройстве → семь раз нажми «Номер сборки».</li>
+              <li>Настройки → Параметры разработчика → включи «Отладка USB».</li>
+              <li>Подключи кабель и на планшете разреши отладку для этого компьютера.</li>
+            </ol>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="app">
+      <h1>Программа</h1>
+      <p class="lead">NowPlaying Server на этом компьютере.</p>
+      <div class="card">
+        <div class="row">
+          <div class="t"><b>Обновляться автоматически</b><small>Новая версия с GitHub ставится сама, когда музыка не играет. Приложение на планшете — тоже</small></div>
+          <label class="sw"><input type="checkbox" data-key="auto_update"><i></i></label>
+        </div>
+        <div class="row">
+          <div class="t"><b>Автозапуск, журнал, брандмауэр</b><small>В меню значка ♫ рядом с часами Windows</small></div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+<input type="file" id="filePick" accept="image/*,video/*,.gif,.mkv" hidden>
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+let S = null, dragging = false, pickKind = null;
+
+function toast(text) {
+  const t = $('#toast'); t.textContent = text; t.classList.add('show');
+  clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove('show'), 1600);
+}
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+async function save(changes) {
+  try { render(await api('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(changes) })); toast('Сохранено'); }
+  catch (e) { toast('Не сохранилось: ' + e.message); }
+}
+
+// часы ночного режима
+for (const sel of $$('#nightHours select'))
+  for (let h = 0; h < 24; h++) sel.add(new Option(String(h).padStart(2, '0') + ':00', h));
+
+function mediaPreview(box, m) {
+  if (!m) { box.innerHTML = 'нет файла'; return; }
+  if (box.dataset.url === m.url) return;
+  box.dataset.url = m.url;
+  box.innerHTML = m.type === 'video' ? `<video src="${m.url}" muted autoplay loop playsinline></video>` : `<img src="${m.url}" alt="">`;
+}
+
+function render(st) {
+  S = st;
+  const s = st.settings;
+  $('#ver').textContent = 'версия ' + st.version;
+  for (const el of $$('[data-key]')) {
+    const k = el.dataset.key;
+    if (el.type === 'checkbox') el.checked = !!s[k];
+    else if (el.type === 'range') { if (!dragging) { el.value = s[k]; paintRange(el); } }
+    else if (document.activeElement !== el) el.value = s[k];
+  }
+  for (const m of $$('.mode')) m.classList.toggle('on', m.dataset.mode === s.track_bg);
+  $('#trackMediaRow').hidden = s.track_bg !== 'custom';
+  mediaPreview($('#trackPreview'), st.track_media);
+  mediaPreview($('#clockPreview'), st.clock_media);
+  $('#trackName').textContent = st.preparing.track ? 'Готовлю файл…' : (st.track_media ? st.track_media.name.replace(/^nowplaying-upload-\d+/, 'Загруженный файл') : 'Файл не выбран');
+  $('#clockName').textContent = st.preparing.clock ? 'Готовлю файл…' : (st.clock_media ? st.clock_media.name.replace(/^nowplaying-upload-\d+/, 'Загруженный файл') : 'Файл не выбран');
+  const ct = $('#customThumb');
+  if (st.track_media && st.track_media.type === 'image') { ct.classList.add('has'); ct.style.backgroundImage = `url(${st.track_media.url})`; }
+  else { ct.classList.remove('has'); ct.style.backgroundImage = ''; }
+  $('#clockMediaRow').style.opacity = s.clock_bg ? 1 : .45;
+  $('#nightHours').style.opacity = s.night ? 1 : .45;
+  // погода
+  if (document.activeElement !== $('#cityInput')) $('#cityInput').value = s.weather_city;
+  $('#wnow').innerHTML = st.weather_now ? `<span class="wnow">${st.weather_now.temp > 0 ? '+' : ''}${st.weather_now.temp}°</span>&nbsp; ${st.weather_now.text}` :
+    (s.weather_city ? (s.weather ? 'Загружаю…' : s.weather_city) : 'Выбери город');
+  // планшет
+  const t = st.tablet, online = t.seen !== null && t.seen < 15;
+  $('#tabdot').classList.toggle('ok', online);
+  $('#tabline').textContent = online ? 'планшет на связи' : 'планшет не на связи';
+  $('#tabStatus').classList.toggle('ok', online);
+  $('#tabTitle').textContent = online ? 'Планшет на связи' : 'Планшет не на связи';
+  $('#tabSub').textContent = online ? `${t.ip}${t.app_version ? ' · приложение ' + t.app_version : ''}` :
+    (t.ip ? `Последний раз был ${t.ip}` : 'Открой «Сейчас играет» на планшете в той же сети Wi-Fi');
+}
+
+function paintRange(el) {
+  el.style.setProperty('--p', (el.value - el.min) / (el.max - el.min) * 100 + '%');
+  el.nextElementSibling.textContent = el.value + '%';
+}
+
+for (const el of $$('[data-key]')) {
+  const k = el.dataset.key;
+  if (el.type === 'range') {
+    el.addEventListener('input', () => { dragging = true; paintRange(el); });
+    el.addEventListener('change', () => { dragging = false; save({ [k]: +el.value }); });
+  } else if (el.type === 'checkbox') el.addEventListener('change', () => save({ [k]: el.checked }));
+  else if (el.tagName === 'SELECT') el.addEventListener('change', () => save({ [k]: +el.value }));
+}
+for (const m of $$('.mode')) m.addEventListener('click', () => {
+  if (m.dataset.mode === 'custom' && !S.track_media) { pickKind = 'track'; $('#filePick').click(); }
+  save({ track_bg: m.dataset.mode });
+});
+
+// файлы
+for (const b of $$('[data-pick]')) b.addEventListener('click', () => { pickKind = b.dataset.pick; $('#filePick').click(); });
+for (const b of $$('[data-clear]')) b.addEventListener('click', async () => render(await api('/api/settings/clear/' + b.dataset.clear, { method: 'POST' })));
+for (const b of $$('[data-open]')) b.addEventListener('click', () => api('/api/settings/open/' + b.dataset.open, { method: 'POST' }));
+$('#filePick').addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; if (f) upload(pickKind, f); });
+async function upload(kind, file) {
+  const name = kind === 'track' ? '#trackName' : '#clockName';
+  $(name).innerHTML = '<span class="spin"></span>Загружаю…';
+  const fd = new FormData(); fd.append('file', file, file.name);
+  try { render(await api('/api/settings/upload/' + kind, { method: 'POST', body: fd })); toast('Файл загружен, готовлю для планшета'); }
+  catch (e) { $(name).textContent = 'Не получилось: ' + e.message; }
+}
+for (const [row, kind] of [['#trackMediaRow', 'track'], ['#clockMediaRow', 'clock']]) {
+  const el = $(row);
+  el.addEventListener('dragover', e => { e.preventDefault(); el.classList.add('over'); });
+  el.addEventListener('dragleave', () => el.classList.remove('over'));
+  el.addEventListener('drop', e => { e.preventDefault(); el.classList.remove('over'); const f = e.dataTransfer.files[0]; if (f) upload(kind, f); });
+}
+
+// город
+let cityTimer;
+$('#cityInput').addEventListener('input', e => {
+  clearTimeout(cityTimer);
+  const q = e.target.value.trim();
+  cityTimer = setTimeout(async () => {
+    const box = $('#cityResults');
+    if (q.length < 2) { box.classList.remove('show'); return; }
+    const list = await api('/api/settings/geocode?q=' + encodeURIComponent(q));
+    box.innerHTML = list.length ? '' : '<div class="note" style="padding:8px">Ничего не нашлось</div>';
+    for (const c of list) {
+      const b = document.createElement('button');
+      b.innerHTML = `${c.name} <small>${[c.region, c.country].filter(Boolean).join(', ')}</small>`;
+      b.addEventListener('click', () => {
+        box.classList.remove('show');
+        $('#cityInput').value = c.name;
+        save({ weather: true, weather_city: [c.name, c.country].filter(Boolean).join(', '), weather_lat: c.lat, weather_lon: c.lon });
+        $('#cityInput').blur();
+      });
+      box.append(b);
+    }
+    box.classList.add('show');
+  }, 300);
+});
+document.addEventListener('click', e => { if (!e.target.closest('.city')) $('#cityResults').classList.remove('show'); });
+
+// adb
+async function adbFind() {
+  const box = $('#adbBox');
+  box.innerHTML = '<span class="note"><span class="spin"></span>Ищу планшет по USB и Wi-Fi…</span>';
+  $('#adbHelp').hidden = true;
+  let st;
+  try { st = await api('/api/settings/adb?wifi=1'); } catch (e) { box.innerHTML = `<span class="msg err">${e.message}</span>`; return; }
+  if (!st.adb) {
+    box.innerHTML = `<div class="note" style="margin-bottom:10px">Для установки нужен adb — официальная утилита Google для Android (около 7 МБ). Скачать её с dl.google.com?</div>
+      <div class="btns"><button class="btn primary" id="adbGet">Скачать adb</button></div>`;
+    $('#adbGet').onclick = async () => {
+      $('#adbGet').disabled = true; $('#adbGet').innerHTML = '<span class="spin"></span>Скачиваю…';
+      const r = await api('/api/settings/adb/download', { method: 'POST' });
+      if (r.ok) adbFind(); else box.innerHTML = `<span class="msg err">Не скачалось: ${r.error}</span>`;
+    };
+    return;
+  }
+  const devs = st.devices || [];
+  box.innerHTML = '<div class="devs"></div><div class="btns" style="margin-top:10px"><button class="btn" id="adbAgain">Искать снова</button></div>';
+  $('#adbAgain').onclick = adbFind;
+  const list = box.querySelector('.devs');
+  if (!devs.length) { $('#adbHelp').hidden = false; list.innerHTML = '<span class="note">Ни одного устройства.</span>'; return; }
+  for (const d of devs) {
+    const row = document.createElement('div'); row.className = 'dev';
+    const wifi = d.serial.includes(':');
+    row.innerHTML = `<div class="t"><b>${d.model || 'Android-устройство'}</b><small>${wifi ? 'по Wi-Fi' : 'по USB'} · ${d.serial}</small></div>`;
+    if (d.state === 'device') {
+      const b = document.createElement('button'); b.className = 'btn primary'; b.textContent = 'Установить';
+      const msg = document.createElement('span'); msg.className = 'msg';
+      b.onclick = async () => {
+        b.disabled = true; b.innerHTML = '<span class="spin"></span>Ставлю…'; msg.textContent = '';
+        const r = await api('/api/settings/adb/install', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ serial: d.serial }) });
+        b.disabled = false; b.textContent = 'Установить';
+        msg.className = 'msg ' + (r.ok ? 'ok' : 'err'); msg.textContent = r.ok ? 'Готово, приложение запущено' : r.error;
+      };
+      row.append(msg, b);
+    } else {
+      row.insertAdjacentHTML('beforeend', `<span class="msg err">${d.state === 'unauthorized' ? 'Разреши отладку на экране планшета' : 'Нет связи'}</span>`);
+    }
+    list.append(row);
+  }
+}
+$('#adbFind').onclick = adbFind;
+
+// меню слева подсвечивает текущий раздел
+const links = $$('nav a');
+$('#main').addEventListener('scroll', () => {
+  let cur = 'track';
+  for (const sec of $$('section')) if (sec.getBoundingClientRect().top < 160) cur = sec.id;
+  for (const a of links) a.classList.toggle('on', a.getAttribute('href') === '#' + cur);
+});
+
+async function refresh() { try { render(await api('/api/settings')); } catch (e) {} }
+refresh();
+setInterval(refresh, 3000);
+</script>
+</body>
+</html>

@@ -91,7 +91,18 @@ public class MainActivity extends Activity {
     private String updateTried;   // версия, которую уже пробовали поставить (чтобы не по кругу)
 
     // экран и подсветка
-    private static final long DARK_AFTER_IDLE_MS = 30 * 60 * 1000;   // 30 минут без музыки — гасим
+    private long darkAfterMs = 30 * 60 * 1000;   // сколько без музыки до чёрного экрана (0 — не гасить)
+    // настройки с ПК (окно настроек → /api/now → ui)
+    private String uiJson = "";
+    private String trackBgMode = "video";
+    private int trackDim = 55, clockDim = 35, nightFrom = 23, nightTo = 8;
+    private boolean nightOn = true, shadowOn = true;
+    private Drawable shadowDrawable;
+    private View clipDim;
+    private ImageView clipImage;
+    private TextView weatherText;
+    private String clipType = "video";
+    private JSONObject lastNow;
     private static final long WAKE_ON_TAP_MS = 60 * 1000;
     private long idleSince, wakeUntil;
     private float appliedBrightness = -2;
@@ -281,7 +292,8 @@ public class MainActivity extends Activity {
         // а отрицательные отступы оставляют обложку на прежнем месте
         int sh = dp(SHADOW);
         coverFrame = new FrameLayout(this);
-        coverFrame.setBackgroundDrawable(new BitmapDrawable(getResources(), coverShadow(dp(400), sh)));
+        shadowDrawable = new BitmapDrawable(getResources(), coverShadow(dp(400), sh));
+        coverFrame.setBackgroundDrawable(shadowDrawable);
         coverFrame.setPadding(sh, sh, sh, sh);
         coverFrame.addView(cover, new FrameLayout.LayoutParams(dp(400), dp(400)));
         volumeLabel = text(22, true, 255);
@@ -345,8 +357,12 @@ public class MainActivity extends Activity {
         clipLayer = new FrameLayout(this);
         clipVideo = new android.widget.VideoView(this);
         clipLayer.addView(clipVideo, new FrameLayout.LayoutParams(-1, -1, Gravity.CENTER));
-        View clipDim = new View(this);
-        clipDim.setBackgroundColor(0x8c000000);   // ~55% затемнение, чтобы текст читался
+        clipImage = new ImageView(this);
+        clipImage.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        clipImage.setVisibility(View.GONE);
+        clipLayer.addView(clipImage, new FrameLayout.LayoutParams(-1, -1));
+        clipDim = new View(this);
+        clipDim.setBackgroundColor(dimColor(trackDim));   // затемнение, чтобы текст читался
         clipLayer.addView(clipDim, new FrameLayout.LayoutParams(-1, -1));
         clipLayer.setVisibility(View.GONE);
         root.addView(clipLayer, new FrameLayout.LayoutParams(-1, -1));
@@ -381,6 +397,13 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(-2, -2);
         dlp.topMargin = dp(6);
         idle.addView(date, dlp);
+        weatherText = text(22, false, 170);
+        weatherText.setGravity(Gravity.CENTER_HORIZONTAL);
+        weatherText.setVisibility(View.GONE);
+        LinearLayout.LayoutParams wlp = new LinearLayout.LayoutParams(-2, -2);
+        wlp.gravity = Gravity.CENTER_HORIZONTAL;
+        wlp.topMargin = dp(4);
+        idle.addView(weatherText, wlp);
         root.addView(idle, new FrameLayout.LayoutParams(-2, -2, Gravity.CENTER));
 
         status = text(14, false, 150);
@@ -536,19 +559,21 @@ public class MainActivity extends Activity {
         }
     }
 
-    private void loadClip(final String srv, final String id) {
+    /** key — что показываем (c:<клип> или t:<свой фон>), path — адрес на сервере. */
+    private void loadClip(final String srv, final String key, final String path, final String type) {
         pool.execute(new Runnable() {
             public void run() {
                 try {
                     java.io.File dir = getCacheDir();
-                    final java.io.File file = new java.io.File(dir, "clip_" + id + ".mp4");
-                    if (!file.exists()) download("http://" + srv + "/clip/" + id + ".mp4", file);
+                    final java.io.File file = new java.io.File(dir, "clip_" + key.replace(':', '_') + path.substring(path.lastIndexOf('.')));
+                    if (!file.exists()) download("http://" + srv + path, file);
                     for (java.io.File f : dir.listFiles()) {   // храним только текущий
                         if (f.getName().startsWith("clip_") && !f.equals(file)) f.delete();
                     }
+                    final Bitmap bmp = "image".equals(type) ? decodeForScreen(file) : null;
                     ui.post(new Runnable() {
                         public void run() {
-                            if (id.equals(clipId)) showClip(file);
+                            if (key.equals(clipId)) showClip(file, type, bmp);
                         }
                     });
                 } catch (Exception e) {
@@ -559,9 +584,18 @@ public class MainActivity extends Activity {
         });
     }
 
-    private void showClip(java.io.File file) {
+    private void showClip(java.io.File file, String type, Bitmap bmp) {
         clipVideo.stopPlayback();
         clipPlaying = false;
+        clipType = type;
+        if ("image".equals(type)) {
+            clipImage.setImageBitmap(bmp);
+            clipImage.setVisibility(View.VISIBLE);
+            clipReady = bmp != null;
+            return;
+        }
+        clipImage.setImageDrawable(null);
+        clipImage.setVisibility(View.GONE);
         clipVideo.setOnPreparedListener(new android.media.MediaPlayer.OnPreparedListener() {
             public void onPrepared(android.media.MediaPlayer mp) {
                 mp.setLooping(true);
@@ -586,12 +620,15 @@ public class MainActivity extends Activity {
         clipVideo.stopPlayback();
         clipLayer.setVisibility(View.GONE);
         clipVideo.setVisibility(View.GONE);
+        clipImage.setImageDrawable(null);
+        clipImage.setVisibility(View.GONE);
     }
 
     /** Видео трека играет только на экране трека и пока экран не «спит». */
     private void syncClip(boolean shouldPlay) {
         shouldPlay &= clipReady;
         clipLayer.setVisibility(shouldPlay ? View.VISIBLE : View.GONE);
+        if (!"video".equals(clipType)) return;   // картинка: только показать слой
         clipVideo.setVisibility(shouldPlay ? View.VISIBLE : View.GONE);
         if (shouldPlay && !clipPlaying) { clipVideo.start(); clipPlaying = true; }
         else if (!shouldPlay && clipPlaying) { clipVideo.pause(); clipPlaying = false; }
@@ -649,7 +686,8 @@ public class MainActivity extends Activity {
     /** Фон: градиент из трёх цветов обложки (сервер присылает colors), иначе — из одного цвета. */
     private void animateBackground(JSONObject j) {
         int[] to;
-        JSONArray cs = j.optJSONArray("colors");
+        lastNow = j;
+        JSONArray cs = "color".equals(trackBgMode) ? null : j.optJSONArray("colors");
         try {
             if (cs != null && cs.length() == 3) {
                 to = new int[]{Color.parseColor(cs.getString(0)), Color.parseColor(cs.getString(1)),
@@ -734,23 +772,25 @@ public class MainActivity extends Activity {
         });
     }
 
-    private static boolean isNight() {
+    private boolean isNight() {
+        if (!nightOn) return false;
         int h = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY);
-        return h >= 23 || h < 8;
+        return nightFrom > nightTo ? (h >= nightFrom || h < nightTo) : (h >= nightFrom && h < nightTo);
     }
 
     /** Подсветка: днём с музыкой — как в системе; часы — тускло; ночью — ещё тусклее;
      *  30 минут без музыки — чёрный экран с минимальной подсветкой (тап будит на минуту). */
     private void updateScreen(boolean idleNow, long t) {
         boolean night = isNight();
-        boolean darkNow = idleNow && t - idleSince > DARK_AFTER_IDLE_MS && t > wakeUntil;
+        boolean darkNow = idleNow && darkAfterMs > 0 && t - idleSince > darkAfterMs && t > wakeUntil;
         dark.setVisibility(darkNow ? View.VISIBLE : View.GONE);
         if (nightShown == null || nightShown != night) {
             // ночью часы тёмно-красные (не слепят и не светят в комнату), фон затемнён сильнее
             nightShown = night;
             clock.setTextColor(night ? 0xffa3281e : 0xffffffff);
             date.setTextColor(night ? 0x99a3281e : Color.argb(190, 255, 255, 255));
-            bgDim.setBackgroundColor(night ? 0xd9000000 : 0x59000000);
+            weatherText.setTextColor(night ? 0x80a3281e : Color.argb(170, 255, 255, 255));
+            bgDim.setBackgroundColor(night ? 0xd9000000 : dimColor(clockDim));
         }
         syncBgVideo(idleNow && !darkNow);
         syncClip(!idleNow && !darkNow);
@@ -770,7 +810,7 @@ public class MainActivity extends Activity {
     private boolean wakeFromDark() {
         if (dark.getVisibility() != View.VISIBLE) return false;
         wakeUntil = SystemClock.elapsedRealtime() + WAKE_ON_TAP_MS;
-        idleSince = SystemClock.elapsedRealtime() - DARK_AFTER_IDLE_MS + WAKE_ON_TAP_MS;
+        idleSince = SystemClock.elapsedRealtime() - darkAfterMs + WAKE_ON_TAP_MS;
         return true;
     }
 
@@ -789,6 +829,49 @@ public class MainActivity extends Activity {
                 try { get("http://" + s + "/api/control/" + action, 3000); } catch (Exception ignored) { }
             }
         });
+    }
+
+    private static int dimColor(int percent) {
+        return Color.argb(Math.round(percent * 2.55f), 0, 0, 0);
+    }
+
+    /** Настройки из окна на ПК. Применяем, только если что-то поменялось. */
+    private void applyUi(JSONObject u) {
+        if (u == null || u.toString().equals(uiJson)) return;
+        uiJson = u.toString();
+        String mode = u.optString("track_bg", "video");
+        boolean modeChanged = !mode.equals(trackBgMode);
+        trackBgMode = mode;
+        trackDim = u.optInt("track_dim", 55);
+        clipDim.setBackgroundColor(dimColor(trackDim));
+        clockDim = u.optInt("clock_dim", 35);
+        nightOn = u.optBoolean("night", true);
+        nightFrom = u.optInt("night_from", 23);
+        nightTo = u.optInt("night_to", 8);
+        nightShown = null;   // перекрасить часы при следующем тике
+        darkAfterMs = u.optInt("dark_after_min", 30) * 60L * 1000;
+        boolean sh = u.optBoolean("shadow", true);
+        if (sh != shadowOn) {
+            shadowOn = sh;
+            coverFrame.setBackgroundDrawable(sh ? shadowDrawable : null);
+        }
+        if (modeChanged && lastNow != null) {
+            bgColors = new int[]{0, 0, 0};   // чтобы градиент/цвет пересчитался
+            animateBackground(lastNow);
+        }
+    }
+
+    private void showWeather(JSONObject w) {
+        if (w == null) {
+            weatherText.setVisibility(View.GONE);
+            return;
+        }
+        int t = w.optInt("temp");
+        String text = (t > 0 ? "+" : "") + t + "°";
+        String d = w.optString("text", "");
+        if (d.length() > 0) text += "  " + d;
+        weatherText.setText(text);
+        weatherText.setVisibility(View.VISIBLE);
     }
 
     /** Громкость ПК: подпись на обложке сразу, на ПК — не чаще раза в 80 мс (и всегда последнее). */
@@ -953,7 +1036,7 @@ public class MainActivity extends Activity {
                 prefs.edit().putString("server", s).commit();
             }
             try {
-                final JSONObject now = new JSONObject(new String(get("http://" + s + "/api/now", 3000), "UTF-8"));
+                final JSONObject now = new JSONObject(new String(get("http://" + s + "/api/now?v=" + myVersion(), 3000), "UTF-8"));
                 failures = 0;
                 ui.post(new Runnable() { public void run() { apply(now); } });
                 setStatus("");
@@ -1040,7 +1123,19 @@ public class MainActivity extends Activity {
             else loadBg(server, nbg, bg.optString("ext", "jpg"), bg.optString("type", "image"));
         }
         if (!volumeDrag && !j.isNull("volume")) volume = j.optInt("volume", -1);
-        String nclip = j.isNull("clip") ? null : j.optString("clip", null);
+        applyUi(j.optJSONObject("ui"));
+        showWeather(j.optJSONObject("weather"));
+        // за треком: своё фото/видео или видео клипа из Яндекс Музыки
+        String nclip = null, path = null, type = "video";
+        JSONObject tm = j.optJSONObject("track_media");
+        if ("custom".equals(trackBgMode) && tm != null) {
+            nclip = "t:" + tm.optString("id");
+            path = "/bg-track/" + tm.optString("id") + "." + tm.optString("ext", "mp4");
+            type = tm.optString("type", "video");
+        } else if (!j.isNull("clip") && j.optString("clip", "").length() > 0) {
+            nclip = "c:" + j.optString("clip");
+            path = "/clip/" + j.optString("clip") + ".mp4";
+        }
         if (nclip == null ? clipId != null : !nclip.equals(clipId)) {
             clipId = nclip;
             if (nclip == null) {
@@ -1050,7 +1145,7 @@ public class MainActivity extends Activity {
                 }
             } else {
                 clearClip();   // старое видео не показываем под новым треком
-                loadClip(server, nclip);
+                loadClip(server, nclip, path, type);
             }
         }
         String apk = j.isNull("apk_version") ? null : j.optString("apk_version", null);
