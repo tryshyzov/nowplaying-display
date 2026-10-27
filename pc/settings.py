@@ -10,7 +10,8 @@ import threading
 DEFAULTS = {
     # экран трека
     'theme': 'classic',       # раскладка экрана трека: classic, scene, poster, minimal, vinyl
-    'track_bg': 'video',      # video — видео из Яндекс Музыки, иначе градиент; gradient; blur; color; custom — своё
+    'track_bg': 'video',      # video — видео из Яндекс Музыки; gradient; blur; color; custom — своё
+    'video_fallback': 'gradient',  # что за обложкой, если у трека нет видео: gradient или blur
     'track_dim': 55,          # затемнение видео или своего фона за треком, %
     'shadow': True,           # тень под обложкой
     'pulse': True,            # свечение за обложкой «дышит» под музыку
@@ -83,6 +84,8 @@ class Settings:
             clean[k] = v
         if clean.get('track_bg', 'video') not in ('video', 'gradient', 'blur', 'color', 'custom'):
             clean.pop('track_bg')
+        if clean.get('video_fallback', 'gradient') not in ('gradient', 'blur'):
+            clean.pop('video_fallback')
         if clean.get('theme', 'classic') not in ('classic', 'scene', 'poster', 'minimal', 'vinyl'):
             clean.pop('theme')
         for k, lo, hi in (('track_dim', 0, 90), ('clock_dim', 0, 90), ('night_from', 0, 23),

@@ -42,7 +42,7 @@ import updater
 import volume
 import yandex
 
-VERSION = '1.7'       # версия программы для ПК (= тег релиза на GitHub)
+VERSION = '1.7.1'     # версия программы для ПК (= тег релиза на GitHub)
 HTTP_PORT = int(os.environ.get('NP_HTTP_PORT', '47801'))
 UDP_PORT = int(os.environ.get('NP_UDP_PORT', '47800'))
 POLL = 0.5           # секунд между опросами панели Windows
@@ -368,7 +368,9 @@ async def h_now(request):
     s['bg'] = BG.info() if SETTINGS['clock_bg'] else None
     s['clip'] = CLIPS.info(s['track_id'])          # видео из Яндекс Музыки (если включено)
     s['track_media'] = TRACK_BG.info() if SETTINGS['track_bg'] == 'custom' else None
-    if SETTINGS['track_bg'] == 'blur' and s['has_art']:
+    # размытая обложка: выбрана сама или как запасной фон, пока у трека нет видео из клипа
+    fallback_blur = SETTINGS['track_bg'] == 'video' and not s['clip'] and SETTINGS['video_fallback'] == 'blur'
+    if (SETTINGS['track_bg'] == 'blur' or fallback_blur) and s['has_art']:
         rev = f"{s['track_id']}r{s['art_rev']}"   # новая (чёткая) обложка — новый размытый фон
         s['track_media'] = {'id': rev, 'type': 'image', 'ext': 'jpg', 'url': f"/art/{s['track_id']}-blur.jpg?r={s['art_rev']}"}
     s['ui'] = SETTINGS.ui()

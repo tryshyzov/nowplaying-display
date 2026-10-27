@@ -134,6 +134,9 @@ select option { background: #222; }
   transition: border-color .15s, background .15s; }
 .drop.over { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
 
+.seg { display: inline-flex; background: var(--card-hi); border: 1px solid var(--line); border-radius: 10px; padding: 3px; flex: none; }
+.seg button { background: none; border: 0; border-radius: 7px; padding: 6px 12px; cursor: pointer; color: var(--dim); white-space: nowrap; }
+.seg button.on { background: var(--accent); color: #0e1030; }
 .hours { display: flex; align-items: center; gap: 8px; color: var(--dim); }
 
 /* город */
@@ -214,11 +217,17 @@ select option { background: #222; }
         <div class="row stack">
           <div class="t"><b>Фон за обложкой</b></div>
           <div class="modes" id="modes">
-            <button class="mode" data-mode="video"><div class="thumb t-video"><i class="cv"></i><i class="ln" style="top:38%;width:30%"></i><i class="ln d" style="top:50%;width:38%"></i><i class="ln d" style="top:62%;width:26%"></i></div><b>Видео из клипа</b><small>Из Яндекс Музыки, если есть. Иначе градиент</small></button>
+            <button class="mode" data-mode="video"><div class="thumb t-video"><i class="cv"></i><i class="ln" style="top:38%;width:30%"></i><i class="ln d" style="top:50%;width:38%"></i><i class="ln d" style="top:62%;width:26%"></i></div><b>Видео из клипа</b><small>Из Яндекс Музыки, если есть</small></button>
             <button class="mode" data-mode="gradient"><div class="thumb t-gradient"><i class="cv"></i><i class="ln" style="top:38%;width:30%"></i><i class="ln d" style="top:50%;width:38%"></i><i class="ln d" style="top:62%;width:26%"></i></div><b>Градиент</b><small>Из трёх цветов обложки</small></button>
             <button class="mode" data-mode="blur"><div class="thumb t-blur"><i class="cv"></i><i class="ln" style="top:38%;width:30%"></i><i class="ln d" style="top:50%;width:38%"></i><i class="ln d" style="top:62%;width:26%"></i></div><b>Размытая обложка</b><small>Очень сильно размытая обложка на весь экран</small></button>
             <button class="mode" data-mode="color"><div class="thumb t-color"><i class="cv"></i><i class="ln" style="top:38%;width:30%"></i><i class="ln d" style="top:50%;width:38%"></i><i class="ln d" style="top:62%;width:26%"></i></div><b>Цвет</b><small>Один приглушённый цвет обложки</small></button>
             <button class="mode" data-mode="custom"><div class="thumb t-custom" id="customThumb"><i class="cv"></i><i class="ln" style="top:38%;width:30%"></i><i class="ln d" style="top:50%;width:38%"></i><i class="ln d" style="top:62%;width:26%"></i></div><b>Своё</b><small>Твоё фото или видео для всех песен</small></button>
+          </div>
+        </div>
+        <div class="row" id="fallbackRow">
+          <div class="t"><b>Если у трека нет видео</b><small>Видео есть не у всех песен — что показывать вместо него</small></div>
+          <div class="seg" id="fallbackSeg">
+            <button data-fallback="gradient">Градиент</button><button data-fallback="blur">Размытая обложка</button>
           </div>
         </div>
         <div class="row stack" id="trackMediaRow" hidden>
@@ -409,6 +418,8 @@ function render(st) {
   for (const m of $$('.mode')) m.classList.toggle('on', m.dataset.mode === s.track_bg);
   for (const m of $$('.theme')) m.classList.toggle('on', m.dataset.theme === s.theme);
   $('#trackMediaRow').hidden = s.track_bg !== 'custom';
+  $('#fallbackRow').hidden = s.track_bg !== 'video';
+  for (const b of $$('[data-fallback]')) b.classList.toggle('on', b.dataset.fallback === s.video_fallback);
   mediaPreview($('#trackPreview'), st.track_media);
   mediaPreview($('#clockPreview'), st.clock_media);
   $('#trackName').textContent = st.preparing.track ? 'Готовлю файл…' : (st.track_media ? st.track_media.name.replace(/^nowplaying-upload-\d+/, 'Загруженный файл') : 'Файл не выбран');
@@ -449,6 +460,7 @@ for (const el of $$('[data-key]')) {
   else if (el.tagName === 'SELECT') el.addEventListener('change', () => save({ [k]: +el.value }));
 }
 for (const m of $$('.theme')) m.addEventListener('click', () => save({ theme: m.dataset.theme }));
+for (const b of $$('[data-fallback]')) b.addEventListener('click', () => save({ video_fallback: b.dataset.fallback }));
 for (const m of $$('.mode')) m.addEventListener('click', () => {
   if (m.dataset.mode === 'custom' && !S.track_media) { pickKind = 'track'; $('#filePick').click(); }
   save({ track_bg: m.dataset.mode });

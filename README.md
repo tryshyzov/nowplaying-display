@@ -76,7 +76,7 @@ Open the «Сейчас играет» ("Now Playing") app. It **finds the PC on
 
 Click the tray icon (or «Настройки…» in its menu) to open the settings window. Everything applies to the tablet right away:
 
-- **Track screen:** the layout (Classic, Scene — cover in the middle with a line of lyrics under it, Poster — cover at full screen height, Minimal — no cover, large type, Vinyl — a spinning record sliding out of the cover sleeve); what's behind the cover — video from the music video, a gradient from the cover, a heavily blurred cover, a single color, or your own photo/video for all songs; background dimming; a soft glow behind the cover that pulses with the music (the server listens to the PC's output level); cover shadow.
+- **Track screen:** the layout (Classic, Scene — cover in the middle with a line of lyrics under it, Poster — cover at full screen height, Minimal — no cover, large type, Vinyl — a spinning record sliding out of the cover sleeve); what's behind the cover — video from the music video, a gradient from the cover, a heavily blurred cover (also usable as the fallback when a track has no video), a single color, or your own photo/video for all songs; background dimming; a soft glow behind the cover that pulses with the music (the server listens to the PC's output level); cover shadow.
 - **Clock:** your own photo, GIF or video, its dimming, night mode hours, when to turn the screen off.
 - **Weather** under the date, from [Open-Meteo](https://open-meteo.com) (no account): turn it on and pick your city.
 - **Tablet:** is it online, and installing the app over adb by USB or Wi-Fi. If adb isn't installed, the window offers to download Google's official platform-tools (about 7 MB).
