@@ -1,6 +1,8 @@
 # NowPlaying — экран «Сейчас играет» для старого планшета
 
-[English](README.md) | **Русский**
+[English](README.md) | **Русский** | [Сайт](https://tryshyzov.github.io/nowplaying-display/)
+
+<p align="center"><img src="docs/screenshots/demo.gif" width="560" alt="NowPlaying на Galaxy Tab 3 Lite: экран трека, видео из клипа, темы и часы"></p>
 
 Превращает старый Android-планшет (проверено на Samsung Galaxy Tab 3 Lite, Android 4.2) в экран у компьютера. На нём показывается то, что сейчас играет на ПК с Windows:
 

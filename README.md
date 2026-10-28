@@ -1,6 +1,8 @@
 # NowPlaying — a "Now Playing" screen for an old tablet
 
-**English** | [Русский](README.ru.md)
+**English** | [Русский](README.ru.md) | [Website](https://tryshyzov.github.io/nowplaying-display/)
+
+<p align="center"><img src="docs/screenshots/demo.gif" width="560" alt="NowPlaying on a Galaxy Tab 3 Lite: track screen, music video, layouts and the clock"></p>
 
 Turns an old Android tablet (tested on a Samsung Galaxy Tab 3 Lite, Android 4.2) into a display next to your computer. It shows whatever is playing on your Windows PC:
 
