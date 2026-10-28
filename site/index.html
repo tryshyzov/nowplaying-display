@@ -8,24 +8,24 @@
 <meta property="og:title" content="Сейчас играет — экран для музыки из старого планшета">
 <meta property="og:description" content="Обложка, исполнитель и текст песни на отдельном экране рядом с компьютером.">
 <meta property="og:image" content="img/classic.jpg">
-<link rel="icon" href="img/classic.jpg">
 <style>
 @font-face { font-family: 'Inter'; font-weight: 500; font-display: swap; src: url('fonts/Inter-Medium.ttf'); }
 @font-face { font-family: 'Inter Display'; font-weight: 600; font-display: swap; src: url('fonts/Inter-DisplaySemiBold.ttf'); }
 @font-face { font-family: 'Inter Display'; font-weight: 700; font-display: swap; src: url('fonts/Inter-DisplayBold.ttf'); }
 
 /* цвета страницы — как фон в приложении: три цвета текущей «обложки», меняются плавно */
-@property --c1 { syntax: '<color>'; inherits: true; initial-value: #3d3240; }
-@property --c2 { syntax: '<color>'; inherits: true; initial-value: #2a2236; }
-@property --c3 { syntax: '<color>'; inherits: true; initial-value: #1b1a24; }
+@property --c1 { syntax: '<color>'; inherits: true; initial-value: #4a2440; }
+@property --c2 { syntax: '<color>'; inherits: true; initial-value: #2c1d45; }
+@property --c3 { syntax: '<color>'; inherits: true; initial-value: #1a1530; }
+@property --glow { syntax: '<color>'; inherits: true; initial-value: #ff7aa8; }
 
 :root {
-  --ink: #ffffff;
-  --ink-2: rgba(255,255,255,.72);
-  --ink-3: rgba(255,255,255,.46);
+  --ink: #fff;
+  --ink-2: rgba(255,255,255,.74);
+  --ink-3: rgba(255,255,255,.48);
   --ink-4: rgba(255,255,255,.26);
   --night: #a3281e;
-  --bezel: #1c1c1e;
+  --bezel: #1b1b1d;
   --measure: 34rem;
 }
 * { box-sizing: border-box; }
@@ -34,15 +34,14 @@ body {
   margin: 0; color: var(--ink); min-height: 100vh;
   font: 500 17px/1.55 'Inter', 'Segoe UI', system-ui, sans-serif; -webkit-font-smoothing: antialiased;
   background: linear-gradient(135deg, var(--c1), var(--c2) 55%, var(--c3)) fixed;
-  transition: --c1 1.8s ease, --c2 1.8s ease, --c3 1.8s ease;
+  transition: --c1 1.6s ease, --c2 1.6s ease, --c3 1.6s ease, --glow 1.6s ease;
 }
 a { color: inherit; }
 :focus-visible { outline: 2px solid #fff; outline-offset: 3px; border-radius: 6px; }
+.wrap { width: min(1240px, 100% - 48px); margin: 0 auto; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
-.wrap { width: min(1180px, 100% - 48px); margin: 0 auto; }
-
-/* шапка */
-.top { display: flex; align-items: center; justify-content: space-between; padding: 22px 0; }
+.top { display: flex; align-items: center; justify-content: space-between; padding: 22px 0 18px; }
 .mark { font: 600 19px 'Inter Display', sans-serif; letter-spacing: -.01em; text-decoration: none; display: flex; align-items: center; gap: 10px; }
 .mark i { width: 10px; height: 10px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 4px rgba(255,255,255,.18); }
 .top nav { display: flex; gap: 18px; align-items: center; color: var(--ink-2); font-size: 15px; }
@@ -51,62 +50,94 @@ a { color: inherit; }
 .lang { background: none; border: 1px solid var(--ink-4); color: var(--ink-2); border-radius: 999px; padding: 4px 11px; font: inherit; font-size: 14px; cursor: pointer; }
 .lang:hover { color: var(--ink); border-color: var(--ink-3); }
 
-/* первый экран: текст и планшет */
-.hero { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 56px; align-items: center; padding: 40px 0 90px; }
-h1 { font: 700 clamp(40px, 5.4vw, 72px)/1.02 'Inter Display', sans-serif; letter-spacing: -.035em; margin: 0 0 22px; }
-.hero p { font-size: 19px; color: var(--ink-2); max-width: 28rem; margin: 0 0 30px; }
+/* ---------- первый экран: планшет с живым интерфейсом ---------- */
+/* планшет и подпись под ним помещаются в первый экран целиком */
+.hero { width: min(100%, max(720px, calc((100svh - 300px) * 1.5))); margin: 0 auto; }
+.tablet { position: relative; background: var(--bezel); border-radius: clamp(18px, 3.2vw, 44px); padding: 3.6% 4.4%;
+  box-shadow: inset 0 0 0 1.5px #333338, inset 0 2px 0 #3d3d43, 0 60px 90px -40px rgba(0,0,0,.65), 0 24px 40px -24px rgba(0,0,0,.55); }
+.tablet::before { content: ''; position: absolute; left: 2%; top: 50%; width: .8%; aspect-ratio: 1; transform: translateY(-50%); border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #3b4a63, #0b0d12 70%); }
+.screen { position: relative; aspect-ratio: 1024 / 600; overflow: hidden; border-radius: 3px; container-type: inline-size;
+  background: linear-gradient(135deg, var(--c1), var(--c2) 55%, var(--c3)); cursor: pointer; touch-action: pan-y;
+  user-select: none; -webkit-user-select: none; }
+.screen:focus-visible { outline-offset: 6px; }
+.glow { position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(46cqw 46cqw at 23% 50%, color-mix(in srgb, var(--glow) 60%, transparent), transparent 70%);
+  opacity: .35; }
+.ui { position: absolute; inset: 0; display: grid; grid-template-columns: 39cqw 1fr; gap: 3.5cqw; align-items: center; padding: 3.5cqw; }
+
+.cover { width: 39cqw; aspect-ratio: 1; position: relative; overflow: hidden; box-shadow: 0 1.6cqw 3.4cqw rgba(0,0,0,.5); }
+.art { position: absolute; inset: 0; transition: opacity .6s ease; }
+.art::after { content: ''; position: absolute; inset: 0; opacity: .22; mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E"); }
+/* три обложки — свои, абстрактные */
+.art-a { background:
+  radial-gradient(circle at 34% 64%, #ffe0b0 0 17%, transparent 17.4%),
+  linear-gradient(180deg, transparent 0 63%, rgba(40,10,60,.55) 63% 64.5%, transparent 64.5%),
+  linear-gradient(165deg, #ff9ec0 0%, #c04fd6 52%, #4a2bbd 100%); }
+.art-b { background:
+  radial-gradient(circle at 50% 50%, transparent 0 21%, #e9fffb 21.5% 23.5%, transparent 24%),
+  radial-gradient(circle at 50% 50%, transparent 0 31%, rgba(233,255,251,.45) 31.4% 32.4%, transparent 32.8%),
+  radial-gradient(circle at 50% 50%, transparent 0 41%, rgba(233,255,251,.25) 41.4% 42%, transparent 42.4%),
+  radial-gradient(circle at 70% 25%, #49f2d6, transparent 55%),
+  linear-gradient(200deg, #0f8f9e, #0b2f6b); }
+.art-c { background:
+  radial-gradient(circle at 66% 38%, #ffd36b 0 20%, transparent 20.4%),
+  repeating-linear-gradient(0deg, #e2542c 0 6%, #c23a20 6% 12%),
+  linear-gradient(#e2542c, #8a1d18); }
+.art-c::before { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 42%; background: linear-gradient(transparent, rgba(60,8,10,.75)); }
+
+.text { min-width: 0; height: 100%; display: flex; flex-direction: column; justify-content: center; }
+.title { font: 700 2.93cqw/1.18 'Inter Display', sans-serif; letter-spacing: -.01em; margin: 0; }
+.artist { font: 500 2.15cqw/1.3 'Inter', sans-serif; color: rgba(255,255,255,.78); margin: .3cqw 0 0; }
+.lyr { position: relative; height: 31cqw; margin-top: 1.8cqw; overflow: hidden;
+  -webkit-mask-image: linear-gradient(transparent, #000 15%, #000 85%, transparent); mask-image: linear-gradient(transparent, #000 15%, #000 85%, transparent); }
+.lyr ol { list-style: none; margin: 0; padding: 0; position: absolute; left: 0; right: 0; top: 0; transition: transform .55s cubic-bezier(.3,.7,.3,1); }
+.lyr li { font: 700 2.54cqw/1.22 'Inter Display', sans-serif; letter-spacing: -.01em; margin: 0 0 1.37cqw; color: rgba(255,255,255,.3);
+  transition: color .4s ease; }
+.lyr li.near { color: rgba(255,255,255,.5); }
+.lyr li.now { color: #fff; }
+.bar { height: .4cqw; border-radius: 1cqw; background: rgba(255,255,255,.25); margin-top: 1.4cqw; overflow: hidden; }
+.bar i { display: block; height: 100%; width: 0; background: rgba(255,255,255,.92); border-radius: inherit; }
+.times { display: flex; justify-content: space-between; font: 500 1.37cqw 'Inter', sans-serif; color: rgba(255,255,255,.68); margin-top: .6cqw; }
+.flash { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font: 700 8.8cqw 'Segoe UI Symbol', system-ui, sans-serif;
+  color: rgba(255,255,255,.92); opacity: 0; pointer-events: none; transition: opacity .5s ease .35s; text-shadow: 0 .3cqw 1cqw rgba(0,0,0,.4); }
+.flash.show { opacity: 1; transition: none; }
+
+.under { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 24px 48px; align-items: flex-end; padding: 28px 0 110px; }
+.under .say { flex: 1 1 520px; }
+h1 { font: 700 clamp(30px, 3.6vw, 50px)/1.06 'Inter Display', sans-serif; letter-spacing: -.03em; margin: 0; max-width: 18em; }
+.hint { color: var(--ink-3); font-size: 15px; margin: 12px 0 0; }
 .get { display: flex; flex-wrap: wrap; gap: 12px; }
 .btn { display: inline-flex; align-items: center; gap: 10px; padding: 13px 20px; border-radius: 14px; font: 600 16px 'Inter Display', sans-serif;
-  text-decoration: none; background: #fff; color: #17141c; transition: transform .15s ease; }
+  text-decoration: none; background: #fff; color: #17141c; transition: transform .15s ease; white-space: nowrap; }
 .btn:hover { transform: translateY(-1px); }
 .btn.ghost { background: rgba(255,255,255,.1); color: #fff; box-shadow: inset 0 0 0 1px rgba(255,255,255,.22); }
 .btn svg { width: 18px; height: 18px; flex: none; }
-.fine { margin-top: 16px; font-size: 14px; color: var(--ink-3); }
+.fine { font-size: 14px; color: var(--ink-3); margin: 10px 0 0; text-align: right; }
 
-.tablet { position: relative; aspect-ratio: 1124 / 700; background: var(--bezel); border-radius: 34px; padding: 5% 4.6%;
-  box-shadow: inset 0 0 0 1.5px #34343a, inset 0 2px 0 #3c3c42, 0 40px 80px -30px rgba(0,0,0,.6), 0 18px 40px -20px rgba(0,0,0,.5); }
-.tablet::before { content: ''; position: absolute; left: 2.1%; top: 50%; width: 9px; height: 9px; margin-top: -4.5px; border-radius: 50%;
-  background: radial-gradient(circle at 35% 35%, #3b4a63, #0b0d12 70%); }
-.screen { position: relative; width: 100%; height: 100%; border-radius: 4px; overflow: hidden; background: #000; }
-.screen img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 1.1s ease; }
-.screen img.on { opacity: 1; }
-.caption { margin-top: 16px; text-align: center; font-size: 15px; color: var(--ink-3); min-height: 1.5em; }
-
-/* строки песни — главная часть страницы */
-.lyrics { padding: 12vh 0 18vh; }
-.lyrics ol { list-style: none; margin: 0; padding: 0; max-width: 980px; }
-.line { font: 700 clamp(30px, 4.6vw, 62px)/1.12 'Inter Display', sans-serif; letter-spacing: -.03em; margin: 0 0 .55em;
-  color: var(--ink-4); transition: color .45s ease, transform .45s ease; transform-origin: left center; }
-.line.near { color: rgba(255,255,255,.5); }
-.line.now { color: var(--ink); }
-.line.note { font-weight: 600; }
-.lyrics .cue { font-size: 16px; color: var(--ink-3); margin: 0 0 40px; max-width: var(--measure); }
-
-/* темы */
-.themes { padding: 40px 0 120px; }
+/* ---------- темы ---------- */
+.themes { padding: 30px 0 120px; }
 h2 { font: 700 clamp(30px, 3.6vw, 46px)/1.08 'Inter Display', sans-serif; letter-spacing: -.03em; margin: 0 0 14px; }
-.themes > .wrap > p { color: var(--ink-2); max-width: var(--measure); margin: 0 0 40px; }
+.themes p.lead { color: var(--ink-2); max-width: var(--measure); margin: 0 0 40px; }
 .strip { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 18px; }
 .strip figure { margin: 0; }
-.strip img { display: block; width: 100%; aspect-ratio: 1024 / 600; object-fit: cover; border-radius: 10px; background: #000;
-  box-shadow: 0 0 0 1px rgba(255,255,255,.08); }
+.strip img { display: block; width: 100%; aspect-ratio: 1024 / 600; object-fit: cover; border-radius: 10px; background: #000; box-shadow: 0 0 0 1px rgba(255,255,255,.08); }
 .strip figcaption { margin-top: 12px; font: 600 17px 'Inter Display', sans-serif; }
 .strip figcaption span { display: block; font: 500 14px 'Inter', sans-serif; color: var(--ink-3); margin-top: 2px; }
 .strip figure:nth-child(even) { transform: translateY(28px); }
 
-/* часы — живые, ночью красные */
-.clock { padding: 80px 0 110px; text-align: center; }
-.clock .time { font: 600 clamp(110px, 24vw, 340px)/.9 'Inter Display', sans-serif; letter-spacing: -.045em; font-variant-numeric: tabular-nums;
-  transition: color 1s ease; }
+/* ---------- часы: живые, ночью красные ---------- */
+.clock { padding: 80px 0 110px; text-align: center; transition: background-color 1s ease; }
+.clock .time { font: 600 clamp(110px, 24vw, 340px)/.9 'Inter Display', sans-serif; letter-spacing: -.045em; font-variant-numeric: tabular-nums; transition: color 1s ease; }
 .clock .date { font-size: clamp(18px, 2vw, 26px); color: var(--ink-2); margin-top: 14px; }
 .clock .wx { font-size: clamp(16px, 1.6vw, 21px); color: var(--ink-3); margin-top: 4px; }
 .clock p.say { max-width: var(--measure); margin: 46px auto 0; color: var(--ink-2); }
-.clock { transition: background-color 1s ease; }
-.clock.is-night { background-color: rgba(0,0,0,.72); }   /* ночью, как на планшете: фон почти гаснет */
+.clock.is-night { background-color: rgba(0,0,0,.72); }
 .clock.is-night .time { color: var(--night); }
-.clock.is-night .date, .clock.is-night .wx { color: rgba(163,40,30,.7); }
+.clock.is-night .date, .clock.is-night .wx { color: rgba(163,40,30,.75); }
 
-/* как поставить */
+/* ---------- как поставить ---------- */
 .setup { padding: 60px 0 120px; display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 56px; align-items: start; }
 .setup ol { list-style: none; counter-reset: s; margin: 0; padding: 0; }
 .setup li { counter-increment: s; display: grid; grid-template-columns: 56px 1fr; padding: 22px 0; border-top: 1px solid rgba(255,255,255,.14); }
@@ -122,21 +153,35 @@ footer p { margin: 0; max-width: 44rem; }
 footer a { color: var(--ink-2); }
 
 @media (max-width: 900px) {
-  .hero, .setup { grid-template-columns: 1fr; gap: 40px; }
-  .hero { padding-top: 16px; }
+  .fine { text-align: left; }
+  .setup { grid-template-columns: 1fr; gap: 40px; }
   .strip { grid-template-columns: repeat(5, 72%); overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 8px; }
   .strip figure { scroll-snap-align: start; }
   .strip figure:nth-child(even) { transform: none; }
-  .tablet { border-radius: 22px; }
 }
-@media (max-width: 520px) {
+/* на телефоне планшет «поворачивается» вертикально, чтобы текст был читаемым */
+@media (max-width: 640px) {
   .wrap { width: calc(100% - 32px); }
+  .hero { width: 100%; }
   .top nav a.gh { display: none; }
   body { font-size: 16px; }
+  .tablet { padding: 7% 5%; border-radius: 26px; }
+  .tablet::before { left: 50%; top: 2.6%; width: 2.2%; transform: translateX(-50%); }
+  .screen { aspect-ratio: 600 / 1024; }
+  .ui { grid-template-columns: 1fr; grid-template-rows: auto 1fr; gap: 6cqw; padding: 7cqw 7cqw 8cqw; align-items: start; }
+  .cover { width: 100%; box-shadow: 0 3cqw 6cqw rgba(0,0,0,.5); }
+  .glow { background: radial-gradient(80cqw 80cqw at 50% 30%, color-mix(in srgb, var(--glow) 60%, transparent), transparent 70%); }
+  .title { font-size: 6.4cqw; }
+  .artist { font-size: 4.6cqw; }
+  .lyr { height: 32cqw; margin-top: 3cqw; }
+  .lyr li { font-size: 5.4cqw; margin-bottom: 2.6cqw; }
+  .bar { height: .9cqw; margin-top: 3cqw; }
+  .times { font-size: 3.2cqw; margin-top: 1.4cqw; }
+  .flash { font-size: 20cqw; }
 }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
-  body, .screen img, .line, .btn, .clock .time { transition: none; }
+  body, .lyr ol, .lyr li, .btn, .clock .time, .art { transition: none; }
 }
 </style>
 </head>
@@ -151,10 +196,33 @@ footer a { color: var(--ink-2); }
     </nav>
   </header>
 
-  <section class="hero">
+  <!-- планшет: живой интерфейс приложения, собранный на странице -->
+  <div class="hero">
+  <div class="tablet">
+    <div class="screen" id="screen" tabindex="0" role="group" data-t-label="screen_label" aria-label="Пример экрана. Касание — пауза, стрелки — другой трек">
+      <div class="glow" id="glow"></div>
+      <div class="ui">
+        <div class="cover" aria-hidden="true">
+          <div class="art art-a"></div><div class="art art-b" style="opacity:0"></div><div class="art art-c" style="opacity:0"></div>
+        </div>
+        <div class="text">
+          <p class="title" id="title"></p>
+          <p class="artist" id="artist"></p>
+          <div class="lyr"><ol id="lyr"></ol></div>
+          <div class="bar"><i id="bar"></i></div>
+          <div class="times"><span id="tl">0:00</span><span id="tr">0:00</span></div>
+        </div>
+      </div>
+      <div class="flash" id="flash" aria-hidden="true"></div>
+    </div>
+  </div>
+
+  <section class="under">
+    <div class="say">
+      <h1 data-t="h1">Экран для музыки из старого Android‑планшета</h1>
+      <p class="hint" data-t="hint">Это не картинка: коснись экрана — пауза, свайп или стрелки — другой трек.</p>
+    </div>
     <div>
-      <h1 data-t="h1">Старый планшет снова в деле</h1>
-      <p data-t="lead">Он стоит рядом с компьютером и показывает, что сейчас играет: обложку, исполнителя и текст песни, который подсвечивается в такт.</p>
       <div class="get">
         <a class="btn" data-dl="exe" href="https://github.com/tryshyzov/nowplaying-display/releases/latest">
           <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 5.5 10.5 4.4v7.1H3zm0 13L10.5 19.6v-7H3zm8.5 1.3L21 21v-8.4h-9.5zm0-15.6v7.3H21V3z"/></svg>
@@ -165,44 +233,14 @@ footer a { color: var(--ink-2); }
       </div>
       <p class="fine"><span data-t="free">Бесплатно и с открытым кодом.</span> <span id="ver"></span></p>
     </div>
-    <div>
-      <div class="tablet" aria-label="Экран планшета" data-t-aria="tablet_aria">
-        <div class="screen" id="screen">
-          <img class="on" src="img/classic.jpg" alt="Экран трека: обложка, исполнитель и текст песни">
-          <img src="img/video.jpg" alt="За обложкой идёт видео из клипа">
-          <img src="img/vinyl.jpg" alt="Тема «Винил»: пластинка выезжает из конверта">
-          <img src="img/poster.jpg" alt="Тема «Постер»: обложка во всю высоту">
-          <img src="img/minimal.jpg" alt="Тема «Минимал»: крупный текст без обложки">
-          <img src="img/clock.jpg" alt="Часы со своим фоном, когда музыка на паузе">
-        </div>
-      </div>
-      <p class="caption" id="caption" aria-live="polite"></p>
-    </div>
   </section>
-</div>
-
-<section class="lyrics">
-  <div class="wrap">
-    <p class="cue" data-t="cue">Листай — строки загораются так же, как на экране планшета.</p>
-    <ol id="lines">
-      <li class="line" data-t="l1">Обложка, исполнитель и текст песни.</li>
-      <li class="line" data-t="l2">Строка горит ровно тогда, когда её поют.</li>
-      <li class="line" data-t="l3">Яндекс Музыка, Spotify, браузер — всё, что видит Windows.</li>
-      <li class="line" data-t="l4">Касание — пауза. Свайп — другой трек.</li>
-      <li class="line" data-t="l5">Провёл по обложке — громкость на компьютере.</li>
-      <li class="line note" aria-hidden="true">♪</li>
-      <li class="line" data-t="l6">Фон собирается из цветов обложки.</li>
-      <li class="line" data-t="l7">А если у песни есть клип, за обложкой идёт видео.</li>
-      <li class="line" data-t="l8">Ночью часы краснеют и почти не светят.</li>
-      <li class="line" data-t="l9">Обновляется сам. Настраивать нечего.</li>
-    </ol>
   </div>
-</section>
+</div>
 
 <section class="themes">
   <div class="wrap">
-    <h2 data-t="themes_h">Пять видов экрана</h2>
-    <p data-t="themes_p">Выбираются в окне настроек на компьютере и сразу меняются на планшете. Фон — градиент, размытая обложка, видео или своё фото — подходит к любому виду.</p>
+    <h2 data-t="themes_h">Так это выглядит на настоящем планшете</h2>
+    <p class="lead" data-t="themes_p">Пять видов экрана — выбираются в окне настроек на компьютере и сразу меняются на планшете. Фон — градиент, размытая обложка, видео из клипа или своё фото — подходит к любому виду.</p>
     <div class="strip">
       <figure><img src="img/classic.jpg" alt="" loading="lazy"><figcaption data-t="t1">Классика<span data-t="t1s">Обложка слева, текст справа</span></figcaption></figure>
       <figure><img src="img/scene.jpg" alt="" loading="lazy"><figcaption data-t="t2">Сцена<span data-t="t2s">Обложка по центру</span></figcaption></figure>
@@ -218,7 +256,7 @@ footer a { color: var(--ink-2); }
     <div class="time" id="time">00:00</div>
     <div class="date" id="date"></div>
     <div class="wx" data-t="wx">+3°  переменная облачность</div>
-    <p class="say" id="say" data-t="clock_p">Когда музыка на паузе, на экране часы, дата и погода. С 23 до 8 цифры становятся тёмно-красными — зайди ночью, увидишь.</p>
+    <p class="say" data-t="clock_p">Когда музыка на паузе, на экране часы, дата и погода. С 23 до 8 цифры становятся тёмно-красными — зайди ночью, увидишь.</p>
   </div>
 </section>
 
@@ -248,19 +286,40 @@ footer a { color: var(--ink-2); }
 </footer>
 
 <script>
-// ---------- тексты на двух языках ----------
+// ---------- «треки» на экране: строки песни рассказывают о продукте ----------
+const TRACKS = [
+  { art: 0, c: ['#5a2448', '#331f52', '#1c1636'], glow: '#ff7aa8',
+    ru: { title: 'Сейчас играет', artist: 'Твой старый планшет', lines: [
+      'Это экран для музыки с компьютера.', 'Его можно сделать из старого планшета.', 'Обложка, исполнитель и текст песни.',
+      'Строка горит, когда её поют.', '♪', 'Коснись экрана — будет пауза.', 'Свайп — следующий трек.' ] },
+    en: { title: 'Now Playing', artist: 'Your old tablet', lines: [
+      'A screen for the music on your computer.', 'Made from an old tablet you already have.', 'The cover, the artist and the lyrics.',
+      'Each line lights up when it is sung.', '♪', 'Tap the screen to pause.', 'Swipe for the next track.' ] } },
+  { art: 1, c: ['#0d4a56', '#0c2e52', '#0a1a33'], glow: '#3fe0cf',
+    ru: { title: 'Любой плеер', artist: 'Windows', lines: [
+      'Яндекс Музыка, Spotify, браузер.', 'Всё, что видно в панели Windows.', 'Провёл по обложке — громкость.',
+      'Тянешь полоску — перемотка.', 'Коснулся строки — песня прыгнет туда.', '♪' ] },
+    en: { title: 'Any player', artist: 'Windows', lines: [
+      'Spotify, Yandex Music, your browser.', 'Anything shown in the Windows media panel.', 'Slide over the cover for volume.',
+      'Drag the bar to seek.', 'Tap a line and the song jumps there.', '♪' ] } },
+  { art: 2, c: ['#5c1d12', '#3d1410', '#210c0b'], glow: '#ff8a3d',
+    ru: { title: 'Как тебе нравится', artist: 'Окно настроек', lines: [
+      'Фон собирается из цветов обложки.', 'Или идёт видео из клипа.', 'Пять видов экрана — от постера до пластинки.',
+      'Ночью часы краснеют.', 'Обновляется сам.', 'Скачай — дальше всё само.' ] },
+    en: { title: 'Your way', artist: 'Settings window', lines: [
+      'The background comes from the cover’s colors.', 'Or the music video plays behind it.', 'Five layouts, from poster to vinyl.',
+      'At night the clock turns red.', 'It updates itself.', 'Download it — the rest is automatic.' ] } },
+];
+const LINE_SEC = 3.1;   // строка в секунду-другую, как в настоящей песне
+
+// ---------- тексты страницы на двух языках ----------
 const EN = {
-  name: 'Now Playing', nav_setup: 'Set up', h1: 'An old tablet, back in use',
-  lead: 'It sits next to your computer and shows what is playing: the cover, the artist and the lyrics, lit up line by line in time with the song.',
+  name: 'Now Playing', nav_setup: 'Set up', h1: 'A music screen made from an old Android tablet',
+  hint: 'This isn’t a picture: tap the screen to pause, swipe or use the arrow keys for another track.',
+  screen_label: 'Sample screen. Tap to pause, arrow keys for another track',
   dl_win: 'Download for Windows', dl_apk: 'Android app', free: 'Free and open source.',
-  cue: 'Scroll — the lines light up just like on the tablet.',
-  l1: 'Cover, artist and lyrics.', l2: 'Each line lights up exactly when it is sung.',
-  l3: 'Spotify, Yandex Music, your browser — anything Windows can see.', l4: 'Tap to pause. Swipe for another track.',
-  l5: 'Slide over the cover to change the PC volume.', l6: 'The background is made from the cover’s colors.',
-  l7: 'And if the song has a music video, it plays behind the cover.', l8: 'At night the clock turns dark red and barely glows.',
-  l9: 'It updates itself. Nothing to configure.',
-  themes_h: 'Five screen layouts',
-  themes_p: 'Pick one in the settings window on your PC and the tablet switches at once. The background — gradient, blurred cover, video or your own photo — works with any layout.',
+  themes_h: 'This is how it looks on a real tablet',
+  themes_p: 'Five layouts — pick one in the settings window on your PC and the tablet switches at once. The background — gradient, blurred cover, music video or your own photo — works with any layout.',
   t1: 'Classic', t1s: 'Cover left, lyrics right', t2: 'Scene', t2s: 'Cover in the middle', t3: 'Poster', t3s: 'Cover at full height',
   t4: 'Minimal', t4s: 'Type only', t5: 'Vinyl', t5s: 'The record spins while music plays',
   wx: '+3°  partly cloudy',
@@ -274,76 +333,111 @@ const EN = {
 };
 const RU = {};
 document.querySelectorAll('[data-t]').forEach(el => { RU[el.dataset.t] = el.innerHTML; });
-let lang = 'ru';
+RU.screen_label = document.getElementById('screen').getAttribute('aria-label');
+let lang = 'ru', relTag = '';
 try { lang = localStorage.getItem('np-lang') || (navigator.language.startsWith('ru') ? 'ru' : 'en'); } catch (e) {}
+
+// ---------- плеер на экране ----------
+const $ = id => document.getElementById(id);
+const arts = [...document.querySelectorAll('.art')];
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+let ti = 0, t = 0, playing = true, last = performance.now(), lineEls = [], shown = -1;
+
+function fmt(s) { s = Math.max(0, Math.floor(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
+function dur() { return TRACKS[ti][lang].lines.length * LINE_SEC + 1.5; }
+
+function loadTrack(i, keepTime) {
+  ti = (i + TRACKS.length) % TRACKS.length;
+  if (!keepTime) t = 0;
+  const tr = TRACKS[ti], d = tr[lang];
+  $('title').textContent = d.title;
+  $('artist').textContent = d.artist;
+  const ol = $('lyr');
+  ol.innerHTML = '';
+  lineEls = d.lines.map(text => { const li = document.createElement('li'); li.textContent = text; ol.appendChild(li); return li; });
+  shown = -1;
+  arts.forEach((a, k) => { a.style.opacity = k === tr.art ? 1 : 0; });
+  const s = document.body.style;
+  s.setProperty('--c1', tr.c[0]); s.setProperty('--c2', tr.c[1]); s.setProperty('--c3', tr.c[2]); s.setProperty('--glow', tr.glow);
+  $('tr').textContent = fmt(dur());
+}
+
+function frame(now) {
+  const dt = Math.min(.1, (now - last) / 1000);
+  last = now;
+  if (playing) {
+    t += dt;
+    if (t >= dur()) loadTrack(ti + 1);
+  }
+  // текущая строка — чуть заранее, как в приложении; держится на высоте 40% области текста
+  const cur = Math.min(lineEls.length - 1, Math.floor((t + .25) / LINE_SEC));
+  if (cur !== shown && lineEls.length) {
+    shown = cur;
+    lineEls.forEach((li, k) => { li.className = k === cur ? 'now' : (Math.abs(k - cur) === 1 ? 'near' : ''); });
+    const box = $('lyr').parentElement, el = lineEls[cur];
+    $('lyr').style.transform = `translateY(${box.clientHeight * .4 - el.offsetTop - el.offsetHeight / 2}px)`;
+  }
+  $('bar').style.width = Math.min(100, t / dur() * 100) + '%';
+  $('tl').textContent = fmt(t);
+  // «дыхание» свечения — мягкий пульс в такт ~ 92 BPM, только пока играет
+  const beat = playing && !reduce ? Math.pow(Math.max(0, Math.sin(now / 1000 * Math.PI * 1.53)), 6) : 0;
+  $('glow').style.opacity = (.28 + .5 * beat).toFixed(3);
+  requestAnimationFrame(frame);
+}
+
+function flash(sym) {
+  const f = $('flash');
+  f.textContent = sym; f.classList.add('show');
+  setTimeout(() => f.classList.remove('show'), 30);
+}
+function toggle() { playing = !playing; flash(playing ? '▶' : '❚❚'); }
+function skip(dir) { loadTrack(ti + dir); playing = true; flash(dir > 0 ? '⏭' : '⏮'); }
+
+// жесты как на планшете: касание — пауза, свайп — другой трек
+const scr = $('screen');
+let downX = null, downY = null;
+scr.addEventListener('pointerdown', e => { downX = e.clientX; downY = e.clientY; });
+scr.addEventListener('pointerup', e => {
+  if (downX === null) return;
+  const dx = e.clientX - downX, dy = e.clientY - downY;
+  downX = null;
+  if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) skip(dx < 0 ? 1 : -1);
+  else if (Math.abs(dx) < 10 && Math.abs(dy) < 10) toggle();
+});
+scr.addEventListener('keydown', e => {
+  if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); toggle(); }
+  else if (e.key === 'ArrowRight') { e.preventDefault(); skip(1); }
+  else if (e.key === 'ArrowLeft') { e.preventDefault(); skip(-1); }
+});
+addEventListener('resize', () => { shown = -1; });
+
+// ---------- язык ----------
 function setLang(l) {
   lang = l;
   const dict = l === 'en' ? EN : RU;
   document.querySelectorAll('[data-t]').forEach(el => { if (dict[el.dataset.t] != null) el.innerHTML = dict[el.dataset.t]; });
+  scr.setAttribute('aria-label', dict.screen_label);
   document.documentElement.lang = l;
-  document.getElementById('lang').textContent = l === 'en' ? 'RU' : 'EN';
-  document.getElementById('lang').setAttribute('aria-label', l === 'en' ? 'Русский' : 'English');
+  $('lang').textContent = l === 'en' ? 'RU' : 'EN';
+  $('lang').setAttribute('aria-label', l === 'en' ? 'Русский' : 'English');
   document.title = l === 'en' ? 'Now Playing — a music screen made from an old tablet' : 'Сейчас играет — экран для музыки из старого планшета';
   try { localStorage.setItem('np-lang', l); } catch (e) {}
-  tick(); showCaption();
+  loadTrack(ti, true);
+  tick();
+  showVer();
 }
-document.getElementById('lang').addEventListener('click', () => setLang(lang === 'en' ? 'ru' : 'en'));
-
-// ---------- планшет: экраны по кругу, страница подкрашивается под «обложку» ----------
-const SLIDES = [
-  { c: ['#4a3b4a', '#2f2a3a', '#1d1c24'], ru: 'Экран трека', en: 'Track screen' },
-  { c: ['#4a1a0a', '#5a0e04', '#2a1608'], ru: 'Видео из клипа за обложкой', en: 'Music video behind the cover' },
-  { c: ['#3a3a40', '#232328', '#2e2e33'], ru: 'Тема «Винил»', en: 'Vinyl layout' },
-  { c: ['#4b4a4a', '#3b3838', '#2b2a2c'], ru: 'Тема «Постер»', en: 'Poster layout' },
-  { c: ['#4a3a3e', '#5a3838', '#2f2b2e'], ru: 'Тема «Минимал»', en: 'Minimal layout' },
-  { c: ['#3e4a3a', '#4a4d3e', '#2c3028'], ru: 'Часы со своим фоном', en: 'Clock with your own background' },
-];
-const imgs = [...document.querySelectorAll('#screen img')];
-let cur = 0;
-function paint(i) {
-  const s = document.body.style, c = SLIDES[i].c;
-  s.setProperty('--c1', c[0]); s.setProperty('--c2', c[1]); s.setProperty('--c3', c[2]);
-}
-function showCaption() { document.getElementById('caption').textContent = SLIDES[cur][lang]; }
-function next() {
-  imgs[cur].classList.remove('on');
-  cur = (cur + 1) % imgs.length;
-  imgs[cur].classList.add('on');
-  paint(cur); showCaption();
-}
-paint(0);
-const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
-setInterval(next, reduce ? 7000 : 4200);
-
-// ---------- строки песни: горит та, что на высоте 40% окна (как в приложении) ----------
-const lines = [...document.querySelectorAll('.line')];
-let raf = 0;
-function light() {
-  raf = 0;
-  const y = innerHeight * .4;
-  let best = -1, dist = Infinity;
-  lines.forEach((l, i) => {
-    const r = l.getBoundingClientRect(), d = Math.abs(r.top + r.height / 2 - y);
-    if (d < dist) { dist = d; best = i; }
-  });
-  const inView = lines[0].getBoundingClientRect().top < innerHeight && lines[lines.length - 1].getBoundingClientRect().bottom > 0;
-  lines.forEach((l, i) => {
-    l.classList.toggle('now', inView && i === best);
-    l.classList.toggle('near', inView && Math.abs(i - best) === 1);
-  });
-}
-addEventListener('scroll', () => { if (!raf) raf = requestAnimationFrame(light); }, { passive: true });
-light();
+function showVer() { if (relTag) $('ver').textContent = (lang === 'en' ? 'Version ' : 'Версия ') + relTag; }
+$('lang').addEventListener('click', () => setLang(lang === 'en' ? 'ru' : 'en'));
 
 // ---------- живые часы; ночью красные ----------
 function tick() {
   const d = new Date(), h = d.getHours();
-  document.getElementById('time').textContent = String(h).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  $('time').textContent = String(h).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
   const date = d.toLocaleDateString(lang === 'en' ? 'en-GB' : 'ru-RU', { weekday: 'long', day: 'numeric', month: 'long' });
-  document.getElementById('date').textContent = date.charAt(0).toUpperCase() + date.slice(1);
-  document.getElementById('clock').classList.toggle('is-night', h >= 23 || h < 8);
+  $('date').textContent = date.charAt(0).toUpperCase() + date.slice(1);
+  $('clock').classList.toggle('is-night', h >= 23 || h < 8);
 }
-tick(); setInterval(tick, 10000);
+setInterval(tick, 10000);
 
 // ---------- кнопки скачивания: файлы из последнего релиза ----------
 fetch('https://api.github.com/repos/tryshyzov/nowplaying-display/releases/latest')
@@ -354,11 +448,13 @@ fetch('https://api.github.com/repos/tryshyzov/nowplaying-display/releases/latest
     const apk = rel.assets.find(a => /^NowPlaying-.+\.apk$/.test(a.name));
     document.querySelectorAll('[data-dl="exe"]').forEach(a => { if (exe) a.href = exe.browser_download_url; });
     document.querySelectorAll('[data-dl="apk"]').forEach(a => { if (apk) a.href = apk.browser_download_url; });
-    document.getElementById('ver').textContent = (lang === 'en' ? 'Version ' : 'Версия ') + rel.tag_name.replace(/^v/, '');
+    relTag = rel.tag_name.replace(/^v/, '');
+    showVer();
   })
   .catch(() => {});
 
-if (lang !== 'ru') setLang(lang); else showCaption();
+if (lang !== 'ru') setLang(lang); else { loadTrack(0); tick(); }
+requestAnimationFrame(frame);
 </script>
 </body>
 </html>
